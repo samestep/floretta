@@ -1,0 +1,6 @@
+[package]
+name = "floretta"
+version = "0.0.0"
+license = "MIT"
+description = "Automatic differentiation for WebAssembly."
+edition = "2021"

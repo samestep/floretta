@@ -1,4 +1,1 @@
-*.tgz
-/dist/
-/src/test/out/
-node_modules/
+/target/
