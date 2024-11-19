@@ -1,0 +1,16 @@
+[package]
+name = "floretta-cli"
+description = "Automatic differentiation for WebAssembly."
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "floretta"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+floretta.workspace = true
+wasmprinter.workspace = true
+wat.workspace = true
