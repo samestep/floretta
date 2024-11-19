@@ -1,4 +1,4 @@
-# Floretta [![crates.io](https://img.shields.io/crates/v/floretta)][crate] [![Build](https://github.com/samestep/floretta/actions/workflows/build.yml/badge.svg)](https://github.com/samestep/floretta/actions/workflows/build.yml)
+# Floretta [![crates.io](https://img.shields.io/crates/v/floretta)][crate] [![docs.rs](https://img.shields.io/docsrs/floretta)][docs] [![Build](https://github.com/samestep/floretta/actions/workflows/build.yml/badge.svg)](https://github.com/samestep/floretta/actions/workflows/build.yml)
 
 Take the [gradient][] of any [Wasm][] function. _**(Warning: work in progress.)**_
 
@@ -40,7 +40,7 @@ Then you can use Floretta to take the gradient of the `"square"` function and na
 $ floretta square.wat --gradient square double --output double.wasm
 ```
 
-Finally, if you have a Wasm engine like [Wasmtime][] installed, you can run
+Finally, if you have a Wasm engine like [Wasmtime][] installed, you can use it to run that gradient function in the emitted Wasm binary:
 
 ```
 $ wasmtime --invoke double double.wasm 3
@@ -55,6 +55,7 @@ Floretta is licensed under the [MIT License](LICENSE).
 
 [automatic differentiation]: https://en.wikipedia.org/wiki/Automatic_differentiation
 [crate]: https://crates.io/crates/floretta
+[docs]: https://docs.rs/floretta
 [gradient]: https://en.wikipedia.org/wiki/Gradient
 [rust]: https://www.rust-lang.org/tools/install
 [wasm]: https://webassembly.org/
