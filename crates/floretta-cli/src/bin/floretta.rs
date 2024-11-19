@@ -32,7 +32,7 @@ pub fn main() -> anyhow::Result<()> {
             wat::parse_bytes(&stdin)?.into_owned()
         }
     };
-    let after = floretta::autodiff(&before);
+    let after = floretta::autodiff(&before)?;
     if args.wat {
         let string = wasmprinter::print_bytes(after)?;
         match args.output {
