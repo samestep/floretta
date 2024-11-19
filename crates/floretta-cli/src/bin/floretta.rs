@@ -13,6 +13,10 @@ struct Cli {
     /// Input file path; if not provided, will read from stdin.
     input: Option<PathBuf>,
 
+    /// Export the gradient of a function that is already exported.
+    #[clap(long = "gradient", num_args = 2)]
+    name: Vec<String>,
+
     /// Output file path; if not provided, will write to stdout.
     #[clap(short, long)]
     output: Option<PathBuf>,
@@ -32,7 +36,11 @@ pub fn main() -> anyhow::Result<()> {
             wat::parse_bytes(&stdin)?.into_owned()
         }
     };
-    let after = floretta::autodiff(&before)?;
+    let mut ad = floretta::Autodiff::new();
+    for pair in args.name.chunks(2) {
+        ad.gradient(&pair[0], &pair[1]);
+    }
+    let after = ad.transform(&before)?;
     if args.wat {
         let string = wasmprinter::print_bytes(after)?;
         match args.output {
