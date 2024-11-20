@@ -1,0 +1,11 @@
+[package]
+name = "floretta-wasm"
+private = true
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+floretta.workspace = true
