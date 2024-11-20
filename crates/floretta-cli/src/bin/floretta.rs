@@ -13,8 +13,8 @@ struct Cli {
     /// Input file path; if not provided, will read from stdin.
     input: Option<PathBuf>,
 
-    /// Export the gradient of a function that is already exported.
-    #[clap(long = "gradient", num_args = 2)]
+    /// Export the backward pass of a function that is already exported.
+    #[clap(long = "export", num_args = 2)]
     name: Vec<String>,
 
     /// Output file path; if not provided, will write to stdout.
@@ -38,7 +38,7 @@ pub fn main() -> anyhow::Result<()> {
     };
     let mut ad = floretta::Autodiff::new();
     for pair in args.name.chunks(2) {
-        ad.gradient(&pair[0], &pair[1]);
+        ad.export(&pair[0], &pair[1]);
     }
     let after = ad.transform(&before)?;
     if args.wat {

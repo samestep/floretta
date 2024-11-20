@@ -2,13 +2,12 @@
 
 Take the [gradient][] of any [Wasm][] function. _**(Warning: work in progress.)**_
 
-Floretta uses reverse-mode [automatic differentiation][] to transform a Wasm module, converting every function into three:
+Floretta uses reverse-mode [automatic differentiation][] to transform a Wasm module, converting every function into two:
 
-1. The original function.
-2. The _forward pass_, which performs the same computation as the original function, but stores some extra data along the way, referred to as the _tape_.
-3. The _backward pass_, which uses the tape stored by the forward pass to retrace its steps in reverse.
+1. The _forward pass_, which performs the same computation as the original function, but stores some extra data along the way, referred to as the _tape_.
+2. The _backward pass_, which uses the tape stored by the forward pass to retrace its steps in reverse.
 
-Together, the latter two comprise the _vector-Jacobian product (VJP)_, which can then be used to compute the gradient of any function that returns a scalar.
+Together, these comprise the _vector-Jacobian product (VJP)_, which can then be used to compute the gradient of any function that returns a scalar.
 
 For every memory in the original Wasm module, Floretta adds an additional memory in the transformed module, to store the derivative of each scalar in the original memory. Also, Floretta adds one last memory to store the tape.
 
@@ -34,10 +33,10 @@ For example, if you create a file called `square.wat` with these contents:
     (f64.mul (local.get 0) (local.get 0))))
 ```
 
-Then you can use Floretta to take the gradient of the `"square"` function and name it `"double"`, since the gradient of $f(x) = x^2$ is $\nabla f(x) = 2x$ which doubles its argument:
+Then you can use Floretta to take the backward pass of the `"square"` function and name it `"double"`, since the gradient of $f(x) = x^2$ is $\nabla f(x) = 2x$ which doubles its argument:
 
 ```
-$ floretta square.wat --gradient square double --output double.wasm
+$ floretta square.wat --export square double --output double.wasm
 ```
 
 Finally, if you have a Wasm engine like [Wasmtime][] installed, you can use it to run that gradient function in the emitted Wasm binary:

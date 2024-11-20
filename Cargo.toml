@@ -12,7 +12,8 @@ edition = "2021"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 floretta = { path = "crates/floretta", version = "0.1.0" }
-wasm-encoder = "0.220"
+thiserror = "1"
+wasm-encoder = { version = "0.220", features = ["wasmparser"] }
 wasmparser = "0.220"
 wasmprinter = "0.220"
 wasmtime = "26"
