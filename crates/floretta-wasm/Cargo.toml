@@ -1,6 +1,6 @@
 [package]
 name = "floretta-wasm"
-private = true
+publish = false
 version.workspace = true
 edition.workspace = true
 
