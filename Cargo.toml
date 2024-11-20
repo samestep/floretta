@@ -18,3 +18,11 @@ wasmparser = "0.220"
 wasmprinter = "0.220"
 wasmtime = "26"
 wat = "1"
+
+# https://github.com/johnthagen/min-sized-rust
+[profile.tiny]
+codegen-units = 1
+inherits = "release"
+lto = true
+opt-level = "z"
+strip = true
