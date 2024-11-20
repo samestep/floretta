@@ -43,11 +43,14 @@ use wasmparser::{
     Payload, Validator, ValidatorResources, WasmFeatures,
 };
 
+/// An error that occurred during code transformation.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The error occurred while parsing or validating the input Wasm.
     #[error("Wasm parsing or validation error: {0}")]
     Parse(#[from] BinaryReaderError),
 
+    /// The error occurred while reencoding part of the input Wasm into the output Wasm.
     #[error("Wasm reencoding error: {0}")]
     Reencode(#[from] reencode::Error),
 }
