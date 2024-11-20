@@ -117,7 +117,7 @@ impl ModuleValidator for Validator {
     }
 
     fn code_section_entry(&mut self, body: &FunctionBody) -> wasmparser::Result<Self::Func> {
-        let func = self.code_section_entry(&body)?;
+        let func = self.code_section_entry(body)?;
         Ok(func.into_validator(FuncValidatorAllocations::default()))
     }
 }
