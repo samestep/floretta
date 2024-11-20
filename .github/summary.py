@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-import os
+from pathlib import Path
 
 
 def main():
-    size = os.path.getsize("floretta.wasm")
+    size = Path("floretta.wasm").stat().st_size
     print(f"`floretta.wasm` is {size} bytes.")
 
 
