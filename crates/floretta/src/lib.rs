@@ -31,6 +31,7 @@
 //! [`wat`]: https://crates.io/crates/wat
 //! [wasmtime]: https://crates.io/crates/wasmtime
 
+mod helper;
 mod run;
 mod validate;
 

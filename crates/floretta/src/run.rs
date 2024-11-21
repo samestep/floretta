@@ -6,6 +6,10 @@ use wasm_encoder::{
 use wasmparser::{FunctionBody, Operator, Parser, Payload};
 
 use crate::{
+    helper::{
+        helpers, OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES, TYPE_F32_BIN_BWD,
+        TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD,
+    },
     validate::{FunctionValidator, ModuleValidator},
     Config, Error,
 };
@@ -16,24 +20,46 @@ pub fn transform(
     wasm_module: &[u8],
 ) -> Result<Vec<u8>, Error> {
     let mut types = TypeSection::new();
-    // Types for helper functions to push a floating-point values onto the tape.
+    // Forward-pass arithmetic helper function types to push floating-point values onto the tape.
     types.ty().func_type(&wasm_encoder::FuncType::new(
-        [wasm_encoder::ValType::F32],
+        [wasm_encoder::ValType::F32, wasm_encoder::ValType::F32],
         [wasm_encoder::ValType::F32],
     ));
     types.ty().func_type(&wasm_encoder::FuncType::new(
+        [wasm_encoder::ValType::F64, wasm_encoder::ValType::F64],
         [wasm_encoder::ValType::F64],
+    ));
+    // Backward-pass arithmetic helper function types to pop floating-point values from the tape.
+    types.ty().func_type(&wasm_encoder::FuncType::new(
+        [wasm_encoder::ValType::F32],
+        [wasm_encoder::ValType::F32, wasm_encoder::ValType::F32],
+    ));
+    types.ty().func_type(&wasm_encoder::FuncType::new(
         [wasm_encoder::ValType::F64],
+        [wasm_encoder::ValType::F64, wasm_encoder::ValType::F64],
     ));
     assert_eq!(types.len(), OFFSET_TYPES);
     let mut functions = FunctionSection::new();
     // Type indices for the tape helper functions.
-    functions.function(0);
-    functions.function(1);
+    functions.function(TYPE_F32_BIN_FWD);
+    functions.function(TYPE_F32_BIN_FWD);
+    functions.function(TYPE_F64_BIN_FWD);
+    functions.function(TYPE_F64_BIN_FWD);
+    functions.function(TYPE_F32_BIN_BWD);
+    functions.function(TYPE_F32_BIN_BWD);
+    functions.function(TYPE_F64_BIN_BWD);
+    functions.function(TYPE_F64_BIN_BWD);
     assert_eq!(functions.len(), OFFSET_FUNCTIONS);
     let mut memories = MemorySection::new();
-    // The first memory is always the tape, so it is possible to translate function bodies
-    // without knowing the total number of memories.
+    // The first two memories are always for the tape, so it is possible to translate function
+    // bodies without knowing the total number of memories.
+    memories.memory(wasm_encoder::MemoryType {
+        minimum: 0,
+        maximum: None,
+        memory64: false,
+        shared: false,
+        page_size_log2: None,
+    });
     memories.memory(wasm_encoder::MemoryType {
         minimum: 0,
         maximum: None,
@@ -43,7 +69,15 @@ pub fn transform(
     });
     assert_eq!(memories.len(), OFFSET_MEMORIES);
     let mut globals = GlobalSection::new();
-    // The first global is always the tape pointer.
+    // The first two globals are always the tape pointers.
+    globals.global(
+        wasm_encoder::GlobalType {
+            val_type: wasm_encoder::ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(0),
+    );
     globals.global(
         wasm_encoder::GlobalType {
             val_type: wasm_encoder::ValType::I32,
@@ -55,8 +89,9 @@ pub fn transform(
     assert_eq!(globals.len(), OFFSET_GLOBALS);
     let mut exports = ExportSection::new();
     let mut code = CodeSection::new();
-    code.function(&tee_f32());
-    code.function(&tee_f64());
+    for f in helpers() {
+        code.function(&f);
+    }
     assert_eq!(code.len(), OFFSET_FUNCTIONS);
     for payload in Parser::new(0).parse_all(wasm_module) {
         match payload? {
@@ -148,49 +183,6 @@ pub fn transform(
     module.section(&exports);
     module.section(&code);
     Ok(module.finish())
-}
-
-const OFFSET_TYPES: u32 = 2;
-const OFFSET_FUNCTIONS: u32 = 2;
-const OFFSET_MEMORIES: u32 = 1;
-const OFFSET_GLOBALS: u32 = 1;
-
-fn tee_f32() -> Function {
-    let mut f = Function::new([(1, wasm_encoder::ValType::I32)]);
-    f.instruction(&Instruction::GlobalGet(0));
-    f.instruction(&Instruction::LocalTee(1));
-    f.instruction(&Instruction::LocalGet(0));
-    f.instruction(&Instruction::F32Store(wasm_encoder::MemArg {
-        offset: 0,
-        align: 2,
-        memory_index: 0,
-    }));
-    f.instruction(&Instruction::LocalGet(1));
-    f.instruction(&Instruction::I32Const(4));
-    f.instruction(&Instruction::I32Add);
-    f.instruction(&Instruction::GlobalSet(0));
-    f.instruction(&Instruction::LocalGet(0));
-    f.instruction(&Instruction::End);
-    f
-}
-
-fn tee_f64() -> Function {
-    let mut f = Function::new([(1, wasm_encoder::ValType::I32)]);
-    f.instruction(&Instruction::GlobalGet(0));
-    f.instruction(&Instruction::LocalTee(1));
-    f.instruction(&Instruction::LocalGet(0));
-    f.instruction(&Instruction::F64Store(wasm_encoder::MemArg {
-        offset: 0,
-        align: 3,
-        memory_index: 0,
-    }));
-    f.instruction(&Instruction::LocalGet(1));
-    f.instruction(&Instruction::I32Const(8));
-    f.instruction(&Instruction::I32Add);
-    f.instruction(&Instruction::GlobalSet(0));
-    f.instruction(&Instruction::LocalGet(0));
-    f.instruction(&Instruction::End);
-    f
 }
 
 fn function(
