@@ -6,12 +6,17 @@ use std::{
 
 use anyhow::bail;
 use clap::Parser;
+use floretta::Autodiff;
 
 /// Apply reverse-mode automatic differentiation to a WebAssembly module.
 #[derive(Debug, Parser)]
 struct Cli {
     /// Input file path; if not provided, will read from stdin.
     input: Option<PathBuf>,
+
+    /// Do not validate the input WebAssembly module.
+    #[clap(long)]
+    no_validate: bool,
 
     /// Export the backward pass of a function that is already exported.
     #[clap(long = "export", num_args = 2)]
@@ -36,7 +41,11 @@ pub fn main() -> anyhow::Result<()> {
             wat::parse_bytes(&stdin)?.into_owned()
         }
     };
-    let mut ad = floretta::Autodiff::new();
+    let mut ad = if args.no_validate {
+        Autodiff::no_validate()
+    } else {
+        Autodiff::new()
+    };
     for pair in args.name.chunks(2) {
         ad.export(&pair[0], &pair[1]);
     }
