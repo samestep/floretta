@@ -212,7 +212,7 @@ fn function(
                 // TODO: Don't just hardcode constant return values.
             }
             Operator::F64Mul => {
-                fwd.instruction(&Instruction::F64Const(9.));
+                fwd.instruction(&Instruction::Call(FUNC_F64_MUL_FWD));
                 bwd.instruction(&Instruction::F64Const(6.));
             }
             _ => todo!(),
