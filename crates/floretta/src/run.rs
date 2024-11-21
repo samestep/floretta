@@ -1,15 +1,16 @@
 use wasm_encoder::{
     reencode::{Reencode, RoundtripReencoder},
-    CodeSection, ExportKind, ExportSection, Function, FunctionSection, GlobalSection, Instruction,
-    MemorySection, Module, TypeSection,
+    CodeSection, Encode, ExportKind, ExportSection, Function, FunctionSection, GlobalSection,
+    Instruction, MemorySection, Module, TypeSection,
 };
 use wasmparser::{FunctionBody, Operator, Parser, Payload};
 
 use crate::{
     helper::{
-        helpers, OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES, TYPE_F32_BIN_BWD,
-        TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD,
+        helpers, FUNC_F64_MUL_FWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES,
+        TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD,
     },
+    util::u32_to_usize,
     validate::{FunctionValidator, ModuleValidator},
     Config, Error,
 };
@@ -93,6 +94,9 @@ pub fn transform(
         code.function(&f);
     }
     assert_eq!(code.len(), OFFSET_FUNCTIONS);
+    let mut type_sigs = Vec::new();
+    let mut func_sigs = Vec::new();
+    let mut bodies = 0;
     for payload in Parser::new(0).parse_all(wasm_module) {
         match payload? {
             Payload::TypeSection(section) => {
@@ -109,6 +113,7 @@ pub fn transform(
                         ty.results().iter().copied(),
                         ty.params().iter().copied(),
                     ));
+                    type_sigs.push(ty);
                 }
             }
             Payload::FunctionSection(section) => {
@@ -120,6 +125,8 @@ pub fn transform(
                     // into two.
                     functions.function(OFFSET_TYPES + 2 * t);
                     functions.function(OFFSET_TYPES + 2 * t + 1);
+                    // TODO: Finagle things to not have to clone these signatures.
+                    func_sigs.push(type_sigs[u32_to_usize(t)].clone());
                 }
             }
             Payload::MemorySection(section) => {
@@ -168,9 +175,10 @@ pub fn transform(
             }
             Payload::CodeSectionEntry(body) => {
                 let func = validator.code_section_entry(&body)?;
-                let (fwd, bwd) = function(func, body)?;
-                code.function(&fwd);
-                code.function(&bwd);
+                let (fwd, bwd) = function(func, &func_sigs, bodies, body)?;
+                code.raw(&fwd);
+                code.raw(&bwd);
+                bodies += 1;
             }
             other => validator.payload(&other)?,
         }
@@ -187,8 +195,10 @@ pub fn transform(
 
 fn function(
     mut validator: impl FunctionValidator,
+    signatures: &[wasm_encoder::FuncType],
+    index: u32,
     body: FunctionBody,
-) -> Result<(Function, Function), Error> {
+) -> Result<(Vec<u8>, Vec<u8>), Error> {
     let mut locals = Vec::new();
     let mut locals_reader = body.get_locals_reader()?;
     for _ in 0..locals_reader.get_count() {
@@ -198,7 +208,14 @@ fn function(
         locals.push((count, RoundtripReencoder.val_type(ty)?));
     }
     let mut fwd = Function::new(locals);
-    let mut bwd = Function::new([]);
+    let mut bwd = ReverseFunction::new(
+        signatures[u32_to_usize(index)]
+            .results()
+            .len()
+            .try_into()
+            .unwrap(),
+    );
+    bwd.instruction(&Instruction::End);
     let mut operators_reader = body.get_operators_reader()?;
     while !operators_reader.eof() {
         let (op, offset) = operators_reader.read_with_offset()?;
@@ -206,10 +223,9 @@ fn function(
         match op {
             Operator::End => {
                 fwd.instruction(&Instruction::End);
-                bwd.instruction(&Instruction::End);
             }
-            Operator::LocalGet { .. } => {
-                // TODO: Don't just hardcode constant return values.
+            Operator::LocalGet { local_index } => {
+                fwd.instruction(&Instruction::LocalGet(local_index));
             }
             Operator::F64Mul => {
                 fwd.instruction(&Instruction::Call(FUNC_F64_MUL_FWD));
@@ -219,5 +235,75 @@ fn function(
         }
     }
     validator.finish(operators_reader.original_position())?;
-    Ok((fwd, bwd))
+    Ok((fwd.into_raw_body(), bwd.into_raw_body()))
+}
+
+struct Locals {
+    blocks: u32,
+    count: u32,
+    bytes: Vec<u8>,
+}
+
+impl Locals {
+    fn new(params: u32) -> Self {
+        Self {
+            blocks: 0,
+            count: params,
+            bytes: Vec::new(),
+        }
+    }
+
+    fn blocks(&self) -> u32 {
+        self.blocks
+    }
+
+    fn locals(&mut self, count: u32, ty: wasm_encoder::ValType) {
+        count.encode(&mut self.bytes);
+        ty.encode(&mut self.bytes);
+        self.blocks += 1;
+        self.count += count;
+    }
+
+    fn local(&mut self, ty: wasm_encoder::ValType) -> u32 {
+        let i = self.count;
+        self.locals(1, ty);
+        i
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
+}
+
+struct ReverseFunction {
+    locals: Locals,
+    bytes: Vec<u8>,
+}
+
+impl ReverseFunction {
+    fn new(params: u32) -> Self {
+        Self {
+            locals: Locals::new(params),
+            bytes: Vec::new(),
+        }
+    }
+
+    fn local(&mut self, ty: wasm_encoder::ValType) -> u32 {
+        self.locals.local(ty)
+    }
+
+    fn instruction(&mut self, instruction: &Instruction) {
+        let n = self.bytes.len();
+        instruction.encode(&mut self.bytes);
+        self.bytes[n..].reverse();
+    }
+
+    fn into_raw_body(mut self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        self.locals.blocks().encode(&mut bytes);
+        bytes.append(&mut self.locals.into_bytes());
+        self.bytes.reverse();
+        bytes.append(&mut self.bytes);
+        bytes
+    }
 }
