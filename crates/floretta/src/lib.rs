@@ -16,16 +16,18 @@
 //! "#).unwrap();
 //!
 //! let mut ad = floretta::Autodiff::new();
-//! ad.export("square", "double");
+//! ad.export("square", "backprop");
 //! let output = ad.transform(&input).unwrap();
 //!
 //! let engine = Engine::default();
 //! let mut store = Store::new(&engine, ());
 //! let module = Module::new(&engine, &output).unwrap();
 //! let instance = Instance::new(&mut store, &module, &[]).unwrap();
-//! let double = instance.get_typed_func::<f64, f64>(&mut store, "double").unwrap();
-//! let result = double.call(&mut store, 3.).unwrap();
-//! assert_eq!(result, 6.);
+//! let square = instance.get_typed_func::<f64, f64>(&mut store, "square").unwrap();
+//! let backprop = instance.get_typed_func::<f64, f64>(&mut store, "backprop").unwrap();
+//!
+//! assert_eq!(square.call(&mut store, 3.).unwrap(), 9.);
+//! assert_eq!(backprop.call(&mut store, 1.).unwrap(), 6.);
 //! ```
 //!
 //! [`wat`]: https://crates.io/crates/wat
@@ -135,17 +137,21 @@ mod tests {
         let input = wat::parse_str(include_str!("wat/square.wat")).unwrap();
 
         let mut ad = crate::Autodiff::new();
-        ad.export("square", "double");
+        ad.export("square", "backprop");
         let output = ad.transform(&input).unwrap();
 
         let engine = Engine::default();
         let mut store = Store::new(&engine, ());
         let module = Module::new(&engine, &output).unwrap();
         let instance = Instance::new(&mut store, &module, &[]).unwrap();
-        let double = instance
-            .get_typed_func::<f64, f64>(&mut store, "double")
+        let square = instance
+            .get_typed_func::<f64, f64>(&mut store, "square")
             .unwrap();
-        let result = double.call(&mut store, 3.).unwrap();
-        assert_eq!(result, 6.);
+        let backprop = instance
+            .get_typed_func::<f64, f64>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(square.call(&mut store, 3.).unwrap(), 9.);
+        assert_eq!(backprop.call(&mut store, 1.).unwrap(), 6.);
     }
 }

@@ -33,18 +33,28 @@ For example, if you create a file called `square.wat` with these contents:
     (f64.mul (local.get 0) (local.get 0))))
 ```
 
-Then you can use Floretta to take the backward pass of the `"square"` function and name it `"double"`, since the gradient of $f(x) = x^2$ is $\nabla f(x) = 2x$ which doubles its argument:
+Then you can use Floretta to take the backward pass of the `"square"` function and name it `"backprop"`:
 
 ```
-$ floretta square.wat --export square double --output double.wasm
+$ floretta square.wat --export square backprop --output gradient.wasm
 ```
 
-Finally, if you have a Wasm engine like [Wasmtime][] installed, you can use it to run that gradient function in the emitted Wasm binary:
+Finally, if you have a Wasm engine, you can use it to compute a gradient with the emitted Wasm binary by running the forward pass followed by the backward pass. For instance, if you have this code in `gradient.mjs`:
+
+```js
+import fs from "node:fs/promises";
+const wasm = await fs.readFile("gradient.wasm");
+const module = await WebAssembly.instantiate(wasm);
+const { square, backprop } = module.instance.exports;
+console.log(square(3));
+console.log(backprop(1));
+```
+
+Then you could run it in [Node.js][]:
 
 ```
-$ wasmtime --invoke double double.wasm 3
-warning: using `--invoke` with a function that takes arguments is experimental and may break in the future
-warning: using `--invoke` with a function that returns values is experimental and may break in the future
+$ node gradient.mjs
+9
 6
 ```
 
@@ -56,6 +66,6 @@ Floretta is licensed under the [MIT License](LICENSE).
 [crate]: https://crates.io/crates/floretta
 [docs]: https://docs.rs/floretta
 [gradient]: https://en.wikipedia.org/wiki/Gradient
+[node.js]: https://nodejs.org
 [rust]: https://www.rust-lang.org/tools/install
 [wasm]: https://webassembly.org/
-[wasmtime]: https://wasmtime.dev/

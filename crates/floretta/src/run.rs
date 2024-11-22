@@ -1,3 +1,5 @@
+use std::iter;
+
 use wasm_encoder::{
     reencode::{Reencode, RoundtripReencoder},
     CodeSection, Encode, ExportKind, ExportSection, Function, FunctionSection, GlobalSection,
@@ -7,8 +9,9 @@ use wasmparser::{FunctionBody, Operator, Parser, Payload};
 
 use crate::{
     helper::{
-        helpers, FUNC_F64_MUL_FWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES,
-        TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD,
+        helpers, FUNC_F64_MUL_BWD, FUNC_F64_MUL_FWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS,
+        OFFSET_MEMORIES, OFFSET_TYPES, TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD,
+        TYPE_F64_BIN_FWD,
     },
     util::u32_to_usize,
     validate::{FunctionValidator, ModuleValidator},
@@ -199,23 +202,30 @@ fn function(
     index: u32,
     body: FunctionBody,
 ) -> Result<(Vec<u8>, Vec<u8>), Error> {
-    let mut locals = Vec::new();
+    let sig = &signatures[u32_to_usize(index)];
+    let num_params: u32 = sig.params().len().try_into().unwrap();
+    let num_results: u32 = sig.results().len().try_into().unwrap();
+    let mut locals = sig.params().to_vec();
     let mut locals_reader = body.get_locals_reader()?;
     for _ in 0..locals_reader.get_count() {
         let offset = locals_reader.original_position();
         let (count, ty) = locals_reader.read()?;
         validator.define_locals(offset, count, ty)?;
-        locals.push((count, RoundtripReencoder.val_type(ty)?));
+        locals.extend(iter::repeat_n(
+            RoundtripReencoder.val_type(ty)?,
+            u32_to_usize(count),
+        ));
     }
-    let mut fwd = Function::new(locals);
-    let mut bwd = ReverseFunction::new(
-        signatures[u32_to_usize(index)]
-            .results()
-            .len()
-            .try_into()
-            .unwrap(),
-    );
+    let mut fwd = Function::new_with_locals_types(locals.iter().skip(sig.params().len()).copied());
+    let mut bwd = ReverseFunction::new(num_results);
+    for &local in &locals {
+        bwd.local(local);
+    }
     bwd.instruction(&Instruction::End);
+    for i in 0..num_params {
+        bwd.instruction(&Instruction::LocalGet(num_results + i));
+    }
+    let mut stack = Vec::new();
     let mut operators_reader = body.get_operators_reader()?;
     while !operators_reader.eof() {
         let (op, offset) = operators_reader.read_with_offset()?;
@@ -226,15 +236,29 @@ fn function(
             }
             Operator::LocalGet { local_index } => {
                 fwd.instruction(&Instruction::LocalGet(local_index));
+                let ty = locals[u32_to_usize(local_index)];
+                match ty {
+                    wasm_encoder::ValType::F64 => {
+                        let i = num_results + local_index;
+                        bwd.instruction(&Instruction::LocalSet(i));
+                        bwd.instruction(&Instruction::F64Add);
+                        bwd.instruction(&Instruction::LocalGet(i));
+                    }
+                    _ => todo!(),
+                }
+                stack.push(ty);
             }
             Operator::F64Mul => {
                 fwd.instruction(&Instruction::Call(FUNC_F64_MUL_FWD));
-                bwd.instruction(&Instruction::F64Const(6.));
+                bwd.instruction(&Instruction::Call(FUNC_F64_MUL_BWD));
             }
             _ => todo!(),
         }
     }
     validator.finish(operators_reader.original_position())?;
+    for i in 0..num_results {
+        bwd.instruction(&Instruction::LocalGet(i));
+    }
     Ok((fwd.into_raw_body(), bwd.into_raw_body()))
 }
 
