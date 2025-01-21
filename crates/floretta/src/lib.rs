@@ -177,4 +177,96 @@ mod tests {
         assert_eq!(fwd.call(&mut store, 1.1).unwrap(), -0.99);
         assert_eq!(bwd.call(&mut store, 1.).unwrap(), 0.20000000000000018);
     }
+
+    #[test]
+    fn test_f32_mul() {
+        let input = wat::parse_str(include_str!("wat/f32_mul.wat")).unwrap();
+
+        let mut ad = crate::Autodiff::new();
+        ad.export("mul", "backprop");
+        let output = ad.transform(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let fwd = instance
+            .get_typed_func::<(f32, f32), f32>(&mut store, "mul")
+            .unwrap();
+        let bwd = instance
+            .get_typed_func::<f32, (f32, f32)>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(fwd.call(&mut store, (3., 2.)).unwrap(), 6.);
+        assert_eq!(bwd.call(&mut store, 1.).unwrap(), (2., 3.));
+    }
+
+    #[test]
+    fn test_f32_div() {
+        let input = wat::parse_str(include_str!("wat/f32_div.wat")).unwrap();
+
+        let mut ad = crate::Autodiff::new();
+        ad.export("div", "backprop");
+        let output = ad.transform(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let fwd = instance
+            .get_typed_func::<(f32, f32), f32>(&mut store, "div")
+            .unwrap();
+        let bwd = instance
+            .get_typed_func::<f32, (f32, f32)>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(fwd.call(&mut store, (3., 2.)).unwrap(), 1.5);
+        assert_eq!(bwd.call(&mut store, 1.).unwrap(), (0.5, -0.75));
+    }
+
+    #[test]
+    fn test_f64_mul() {
+        let input = wat::parse_str(include_str!("wat/f64_mul.wat")).unwrap();
+
+        let mut ad = crate::Autodiff::new();
+        ad.export("mul", "backprop");
+        let output = ad.transform(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let fwd = instance
+            .get_typed_func::<(f64, f64), f64>(&mut store, "mul")
+            .unwrap();
+        let bwd = instance
+            .get_typed_func::<f64, (f64, f64)>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(fwd.call(&mut store, (3., 2.)).unwrap(), 6.);
+        assert_eq!(bwd.call(&mut store, 1.).unwrap(), (2., 3.));
+    }
+
+    #[test]
+    fn test_f64_div() {
+        let input = wat::parse_str(include_str!("wat/f64_div.wat")).unwrap();
+
+        let mut ad = crate::Autodiff::new();
+        ad.export("div", "backprop");
+        let output = ad.transform(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let fwd = instance
+            .get_typed_func::<(f64, f64), f64>(&mut store, "div")
+            .unwrap();
+        let bwd = instance
+            .get_typed_func::<f64, (f64, f64)>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(fwd.call(&mut store, (3., 2.)).unwrap(), 1.5);
+        assert_eq!(bwd.call(&mut store, 1.).unwrap(), (0.5, -0.75));
+    }
 }

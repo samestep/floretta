@@ -9,9 +9,11 @@ use wasmparser::{FunctionBody, Operator, Parser, Payload};
 
 use crate::{
     helper::{
-        helpers, FUNC_CONTROL_LOAD, FUNC_CONTROL_STORE, FUNC_F64_MUL_BWD, FUNC_F64_MUL_FWD,
-        OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES, TYPE_CONTROL_LOAD,
-        TYPE_CONTROL_STORE, TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD,
+        helpers, FUNC_CONTROL_LOAD, FUNC_CONTROL_STORE, FUNC_F32_DIV_BWD, FUNC_F32_DIV_FWD,
+        FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F64_DIV_BWD, FUNC_F64_DIV_FWD, FUNC_F64_MUL_BWD,
+        FUNC_F64_MUL_FWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES,
+        TYPE_CONTROL_LOAD, TYPE_CONTROL_STORE, TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD,
+        TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD,
     },
     util::u32_to_usize,
     validate::{FunctionValidator, ModuleValidator},
@@ -233,14 +235,23 @@ fn function(
         bwd.local(local);
     }
     let tmp_f64 = bwd.local(wasm_encoder::ValType::F64);
-    for i in 0..num_params {
+    // The first basic block in the forward pass corresponds to the last basic block in the backward
+    // pass, and because each basic block will be reversed, the first instructions we write will
+    // become the last instructions in the function body of the backward pass. Because Wasm
+    // parameters appear in locals but Wasm results appear on the stack, when we reach the end of
+    // the backward pass, we'll have stored all the parameter adjoints in locals corresponding to
+    // those from the forward pass. So, we need to push the values of those locals onto the stack in
+    // order; and because everything will be reversed, that means that here we need to start with
+    // pushing the local corresponding to the last parameter first, then work downward to pushing
+    // the first parameter on the bottom of the stack.
+    for i in (0..num_params).rev() {
         bwd.instruction(&Instruction::LocalGet(num_results + i));
     }
     let mut operators_reader = body.get_operators_reader()?;
     let mut func = Func {
         num_results,
         locals: &locals,
-        offset: 0, // this initial value should be unused; to be set before each instruction
+        offset: 0, // This initial value should be unused; to be set before each instruction.
         operand_stack: Vec::new(),
         operand_stack_height: StackHeight::new(),
         operand_stack_height_min: 0,
@@ -333,9 +344,14 @@ impl Func<'_> {
                 let ty = self.local(local_index);
                 self.push(ty);
                 self.fwd.instruction(&Instruction::LocalGet(local_index));
+                let i = self.bwd_local(local_index);
                 match ty {
+                    wasm_encoder::ValType::F32 => {
+                        self.bwd.instruction(&Instruction::LocalSet(i));
+                        self.bwd.instruction(&Instruction::F32Add);
+                        self.bwd.instruction(&Instruction::LocalGet(i));
+                    }
                     wasm_encoder::ValType::F64 => {
-                        let i = self.num_results + local_index;
                         self.bwd.instruction(&Instruction::LocalSet(i));
                         self.bwd.instruction(&Instruction::F64Add);
                         self.bwd.instruction(&Instruction::LocalGet(i));
@@ -348,9 +364,9 @@ impl Func<'_> {
                 self.pop();
                 self.push(ty);
                 self.fwd.instruction(&Instruction::LocalTee(local_index));
+                let i = self.bwd_local(local_index);
                 match ty {
                     wasm_encoder::ValType::F64 => {
-                        let i = self.num_results + local_index;
                         self.bwd.instruction(&Instruction::LocalSet(i));
                         self.bwd.instruction(&Instruction::F64Const(0.));
                         self.bwd.instruction(&Instruction::F64Add);
@@ -372,6 +388,18 @@ impl Func<'_> {
                 self.bwd.instruction(&Instruction::F64Const(0.));
                 self.bwd.instruction(&Instruction::Drop);
             }
+            Operator::F32Mul => {
+                self.pop2();
+                self.push_f32();
+                self.fwd.instruction(&Instruction::Call(FUNC_F32_MUL_FWD));
+                self.bwd.instruction(&Instruction::Call(FUNC_F32_MUL_BWD));
+            }
+            Operator::F32Div => {
+                self.pop2();
+                self.push_f32();
+                self.fwd.instruction(&Instruction::Call(FUNC_F32_DIV_FWD));
+                self.bwd.instruction(&Instruction::Call(FUNC_F32_DIV_BWD));
+            }
             Operator::F64Sub => {
                 self.pop2();
                 self.push_f64();
@@ -386,6 +414,12 @@ impl Func<'_> {
                 self.fwd.instruction(&Instruction::Call(FUNC_F64_MUL_FWD));
                 self.bwd.instruction(&Instruction::Call(FUNC_F64_MUL_BWD));
             }
+            Operator::F64Div => {
+                self.pop2();
+                self.push_f64();
+                self.fwd.instruction(&Instruction::Call(FUNC_F64_DIV_FWD));
+                self.bwd.instruction(&Instruction::Call(FUNC_F64_DIV_BWD));
+            }
             _ => unimplemented!("{op:?}"),
         }
         Ok(())
@@ -398,6 +432,10 @@ impl Func<'_> {
 
     fn push_i32(&mut self) {
         self.push(wasm_encoder::ValType::I32);
+    }
+
+    fn push_f32(&mut self) {
+        self.push(wasm_encoder::ValType::F32);
     }
 
     fn push_f64(&mut self) {
@@ -422,6 +460,10 @@ impl Func<'_> {
 
     fn local(&self, index: u32) -> wasm_encoder::ValType {
         self.locals[u32_to_usize(index)]
+    }
+
+    fn bwd_local(&self, index: u32) -> u32 {
+        self.num_results + index
     }
 
     /// In the forward pass, store the current basic block index on the tape.
