@@ -32,6 +32,9 @@ pub trait FunctionValidator {
         ty: wasmparser::ValType,
     ) -> wasmparser::Result<()>;
 
+    /// For debugging purposes.
+    fn check_operand_stack_height(&self, height: u32);
+
     fn op(&mut self, offset: usize, operator: &Operator) -> wasmparser::Result<()>;
 
     fn finish(&mut self, offset: usize) -> wasmparser::Result<()>;
@@ -78,6 +81,8 @@ impl FunctionValidator for () {
     ) -> wasmparser::Result<()> {
         Ok(())
     }
+
+    fn check_operand_stack_height(&self, _: u32) {}
 
     fn op(&mut self, _: usize, _: &Operator) -> wasmparser::Result<()> {
         Ok(())
@@ -130,6 +135,13 @@ impl<T: WasmModuleResources> FunctionValidator for FuncValidator<T> {
         ty: wasmparser::ValType,
     ) -> wasmparser::Result<()> {
         self.define_locals(offset, count, ty)
+    }
+
+    fn check_operand_stack_height(&self, height: u32) {
+        let n = self.operand_stack_height();
+        if n != height {
+            panic!("operand stack height mismatch: expected {n}, got {height}");
+        }
     }
 
     fn op(&mut self, offset: usize, operator: &Operator) -> wasmparser::Result<()> {

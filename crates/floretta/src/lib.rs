@@ -154,4 +154,27 @@ mod tests {
         assert_eq!(square.call(&mut store, 3.).unwrap(), 9.);
         assert_eq!(backprop.call(&mut store, 1.).unwrap(), 6.);
     }
+
+    #[test]
+    fn test_loop() {
+        let input = wat::parse_str(include_str!("wat/loop.wat")).unwrap();
+
+        let mut ad = crate::Autodiff::new();
+        ad.export("loop", "backprop");
+        let output = ad.transform(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let fwd = instance
+            .get_typed_func::<f64, f64>(&mut store, "loop")
+            .unwrap();
+        let bwd = instance
+            .get_typed_func::<f64, f64>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(fwd.call(&mut store, 1.1).unwrap(), -0.99);
+        assert_eq!(bwd.call(&mut store, 1.).unwrap(), 0.20000000000000018);
+    }
 }
