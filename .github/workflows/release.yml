@@ -1,0 +1,17 @@
+name: Release
+on:
+  release:
+    types:
+      - created
+
+jobs:
+  crate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --package floretta
+      - env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --package floretta-cli
