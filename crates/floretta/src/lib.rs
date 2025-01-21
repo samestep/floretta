@@ -98,13 +98,13 @@ impl Autodiff {
     }
 
     /// Transform a WebAssembly module using this configuration.
-    pub fn transform(self, wasm_module: &[u8]) -> Result<Vec<u8>, Error> {
-        self.runner.transform(self.config, wasm_module)
+    pub fn transform(&self, wasm_module: &[u8]) -> Result<Vec<u8>, Error> {
+        self.runner.transform(&self.config, wasm_module)
     }
 }
 
 trait Runner {
-    fn transform(&self, config: Config, wasm_module: &[u8]) -> Result<Vec<u8>, Error>;
+    fn transform(&self, config: &Config, wasm_module: &[u8]) -> Result<Vec<u8>, Error>;
 }
 
 // We make `Runner` a `trait` instead of just an `enum`, to facilitate dead code elimination when
@@ -115,7 +115,7 @@ struct Validate;
 struct NoValidate;
 
 impl Runner for Validate {
-    fn transform(&self, config: Config, wasm_module: &[u8]) -> Result<Vec<u8>, Error> {
+    fn transform(&self, config: &Config, wasm_module: &[u8]) -> Result<Vec<u8>, Error> {
         let features = WasmFeatures::empty() | WasmFeatures::FLOATS;
         let validator = Validator::new_with_features(features);
         run::transform(validator, config, wasm_module)
@@ -123,7 +123,7 @@ impl Runner for Validate {
 }
 
 impl Runner for NoValidate {
-    fn transform(&self, config: Config, wasm_module: &[u8]) -> Result<Vec<u8>, Error> {
+    fn transform(&self, config: &Config, wasm_module: &[u8]) -> Result<Vec<u8>, Error> {
         run::transform((), config, wasm_module)
     }
 }

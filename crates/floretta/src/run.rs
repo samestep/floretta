@@ -20,7 +20,7 @@ use crate::{
 
 pub fn transform(
     mut validator: impl ModuleValidator,
-    config: Config,
+    config: &Config,
     wasm_module: &[u8],
 ) -> Result<Vec<u8>, Error> {
     let mut types = TypeSection::new();
