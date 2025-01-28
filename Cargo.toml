@@ -11,7 +11,7 @@ edition = "2021"
 [workspace.dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-floretta = { path = "crates/floretta", version = "0.3.0" }
+floretta = { path = "crates/floretta", version = "=0.3.0" }
 thiserror = "1"
 wasm-encoder = { version = "0.220", features = ["wasmparser"] }
 wasmparser = "0.220"

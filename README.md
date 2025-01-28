@@ -15,14 +15,14 @@ For every memory in the original Wasm module, Floretta adds an additional memory
 
 The easiest way to use Floretta is via the command line. If you have [Rust][] installed, you can build the latest version of Floretta from source:
 
-```
-$ cargo install --locked floretta-cli
+```sh
+cargo install --locked floretta-cli
 ```
 
 Use the `--help` flag to see all available CLI arguments:
 
-```
-$ floretta --help
+```sh
+floretta --help
 ```
 
 For example, if you create a file called `square.wat` with these contents:
@@ -35,8 +35,8 @@ For example, if you create a file called `square.wat` with these contents:
 
 Then you can use Floretta to take the backward pass of the `"square"` function and name it `"backprop"`:
 
-```
-$ floretta square.wat --export square backprop --output gradient.wasm
+```sh
+floretta square.wat --export square backprop --output gradient.wasm
 ```
 
 Finally, if you have a Wasm engine, you can use it to compute a gradient with the emitted Wasm binary by running the forward pass followed by the backward pass. For instance, if you have [Node.js][] installed, you can create a file called `gradient.mjs` with these contents:
@@ -52,11 +52,20 @@ console.log(backprop(1));
 
 And run it like this:
 
+```sh
+node gradient.mjs
 ```
-$ node gradient.mjs
+
+Expected output:
+
+```
 9
 6
 ```
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## License
 
