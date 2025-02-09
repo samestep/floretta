@@ -13,8 +13,13 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 floretta = { path = "crates/floretta", version = "=0.3.0" }
 thiserror = "1"
-wasm-encoder = { version = "0.220", features = ["wasmparser"] }
-wasmparser = "0.220"
+wasm-encoder = { version = "0.220", default-features = false, features = [
+  "wasmparser",
+] }
+wasmparser = { version = "0.220", default-features = false, features = [
+  "features",
+  "validate",
+] }
 wasmprinter = "0.220"
 wasmtime = "26"
 wat = "1"
