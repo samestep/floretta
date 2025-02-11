@@ -34,6 +34,8 @@
 //! [wasmtime]: https://crates.io/crates/wasmtime
 
 mod helper;
+#[cfg(feature = "names")]
+mod name;
 mod run;
 mod util;
 mod validate;
@@ -59,6 +61,10 @@ pub enum Error {
 struct Config {
     /// Exported functions whose backward passes should also be exported.
     exports: HashMap<String, String>,
+
+    /// Whether to include the names section in the output Wasm.
+    #[cfg(feature = "names")]
+    names: bool,
 }
 
 /// WebAssembly code transformation to perform reverse-mode automatic differentiation.
@@ -88,6 +94,12 @@ impl Autodiff {
             runner: Box::new(NoValidate),
             config: Default::default(),
         }
+    }
+
+    /// Include the name section in the output Wasm.
+    #[cfg(feature = "names")]
+    pub fn names(&mut self) {
+        self.config.names = true;
     }
 
     /// Export the backward pass of a function that is already exported.
@@ -130,7 +142,22 @@ impl Runner for NoValidate {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+
+    use goldenfile::Mint;
     use wasmtime::{Engine, Instance, Module, Store};
+
+    #[test]
+    #[cfg(feature = "names")]
+    fn test_names() {
+        let input = wat::parse_str(include_str!("wat/names.wat")).unwrap();
+        let mut ad = crate::Autodiff::new();
+        ad.names();
+        let output = wasmprinter::print_bytes(ad.transform(&input).unwrap()).unwrap();
+        let mut mint = Mint::new("src/out");
+        let mut file = mint.new_goldenfile("names.wat").unwrap();
+        file.write_all(output.as_bytes()).unwrap();
+    }
 
     #[test]
     fn test_square() {

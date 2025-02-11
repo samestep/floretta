@@ -18,6 +18,10 @@ struct Cli {
     #[clap(long)]
     no_validate: bool,
 
+    /// Do not include the name section in the output WebAssembly module.
+    #[clap(long)]
+    no_names: bool,
+
     /// Export the backward pass of a function that is already exported.
     #[clap(long = "export", num_args = 2)]
     name: Vec<String>,
@@ -46,6 +50,9 @@ pub fn main() -> anyhow::Result<()> {
     } else {
         Autodiff::new()
     };
+    if !args.no_names {
+        ad.names();
+    }
     for pair in args.name.chunks(2) {
         ad.export(&pair[0], &pair[1]);
     }

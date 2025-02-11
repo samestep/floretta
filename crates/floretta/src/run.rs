@@ -113,7 +113,9 @@ pub fn transform(
     assert_eq!(code.len(), OFFSET_FUNCTIONS);
     let mut type_sigs = Vec::new();
     let mut func_sigs = Vec::new();
-    let mut bodies = 0;
+    let mut func_infos = Vec::new();
+    #[cfg(feature = "names")]
+    let mut names = None;
     for payload in Parser::new(0).parse_all(wasm_module) {
         match payload? {
             Payload::TypeSection(section) => {
@@ -190,11 +192,21 @@ pub fn transform(
             }
             Payload::CodeSectionEntry(body) => {
                 let func = validator.code_section_entry(&body)?;
-                let (fwd, bwd) = function(func, &func_sigs, bodies, body)?;
+                let index = func_infos.len().try_into().unwrap();
+                let (info, fwd, bwd) = function(func, &func_sigs, index, body)?;
+                func_infos.push(info);
                 code.raw(&fwd);
                 code.raw(&bwd);
-                bodies += 1;
             }
+            Payload::CustomSection(section) => match section.as_known() {
+                #[cfg(feature = "names")]
+                wasmparser::KnownCustom::Name(reader) => {
+                    if config.names {
+                        names = Some(crate::name::Names::new(func_infos.as_slice(), reader)?);
+                    }
+                }
+                _ => todo!(),
+            },
             other => validator.payload(&other)?,
         }
     }
@@ -205,7 +217,43 @@ pub fn transform(
     module.section(&globals);
     module.section(&exports);
     module.section(&code);
+    #[cfg(feature = "names")]
+    if config.names {
+        module.section(&crate::name::name_section(func_infos.as_slice(), names));
+    }
     Ok(module.finish())
+}
+
+// When the `names` feature is disabled, this gets marked as dead code.
+#[allow(dead_code)]
+struct FunctionInfo {
+    sig: wasm_encoder::FuncType,
+    locals: u32,
+    stack_locals: StackHeight,
+}
+
+#[cfg(feature = "names")]
+impl crate::name::FuncInfo for &[FunctionInfo] {
+    fn num_functions(&self) -> u32 {
+        self.len().try_into().unwrap()
+    }
+
+    fn num_results(&self, funcidx: u32) -> u32 {
+        self[u32_to_usize(funcidx)]
+            .sig
+            .results()
+            .len()
+            .try_into()
+            .unwrap()
+    }
+
+    fn num_locals(&self, funcidx: u32) -> u32 {
+        self[u32_to_usize(funcidx)].locals
+    }
+
+    fn stack_locals(&self, funcidx: u32) -> StackHeight {
+        self[u32_to_usize(funcidx)].stack_locals
+    }
 }
 
 fn function(
@@ -213,7 +261,7 @@ fn function(
     signatures: &[wasm_encoder::FuncType],
     index: u32,
     body: FunctionBody,
-) -> Result<(Vec<u8>, Vec<u8>), Error> {
+) -> Result<(FunctionInfo, Vec<u8>, Vec<u8>), Error> {
     let sig = &signatures[u32_to_usize(index)];
     let num_params: u32 = sig.params().len().try_into().unwrap();
     let num_results: u32 = sig.results().len().try_into().unwrap();
@@ -272,6 +320,11 @@ fn function(
     }
     validator.finish(operators_reader.original_position())?;
     Ok((
+        FunctionInfo {
+            sig: sig.clone(), // TODO: Finagle things to not have to clone these signatures.
+            locals: locals.len().try_into().unwrap(),
+            stack_locals: func.bwd.max_stack_heights,
+        },
         func.fwd.into_raw_body(),
         func.bwd.into_raw_body(&func.operand_stack),
     ))
@@ -483,11 +536,11 @@ impl Func<'_> {
 }
 
 #[derive(Clone, Copy)]
-struct StackHeight {
-    i32: u32,
-    i64: u32,
-    f32: u32,
-    f64: u32,
+pub struct StackHeight {
+    pub i32: u32,
+    pub i64: u32,
+    pub f32: u32,
+    pub f64: u32,
 }
 
 impl StackHeight {
