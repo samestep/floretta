@@ -12,16 +12,16 @@ edition = "2021"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 floretta = { path = "crates/floretta", version = "=0.3.0" }
-thiserror = "1"
-wasm-encoder = { version = "0.220", default-features = false, features = [
+thiserror = "2"
+wasm-encoder = { version = "0.225", default-features = false, features = [
   "wasmparser",
 ] }
-wasmparser = { version = "0.220", default-features = false, features = [
+wasmparser = { version = "0.225", default-features = false, features = [
   "features",
   "validate",
 ] }
-wasmprinter = "0.220"
-wasmtime = "26"
+wasmprinter = "0.225"
+wasmtime = "29"
 wat = "1"
 
 # https://github.com/johnthagen/min-sized-rust
