@@ -198,15 +198,14 @@ pub fn transform(
                 code.raw(&fwd);
                 code.raw(&bwd);
             }
-            Payload::CustomSection(section) => match section.as_known() {
-                #[cfg(feature = "names")]
-                wasmparser::KnownCustom::Name(reader) => {
+            #[cfg(feature = "names")]
+            Payload::CustomSection(section) => {
+                if let wasmparser::KnownCustom::Name(reader) = section.as_known() {
                     if config.names {
                         names = Some(crate::name::Names::new(func_infos.as_slice(), reader)?);
                     }
                 }
-                _ => todo!(),
-            },
+            }
             other => validator.payload(&other)?,
         }
     }
