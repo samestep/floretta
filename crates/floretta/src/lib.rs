@@ -128,7 +128,7 @@ struct NoValidate;
 
 impl Runner for Validate {
     fn transform(&self, config: &Config, wasm_module: &[u8]) -> Result<Vec<u8>, Error> {
-        let features = WasmFeatures::empty() | WasmFeatures::FLOATS;
+        let features = WasmFeatures::empty() | WasmFeatures::MULTI_VALUE | WasmFeatures::FLOATS;
         let validator = Validator::new_with_features(features);
         run::transform(validator, config, wasm_module)
     }
@@ -180,6 +180,35 @@ mod tests {
 
         assert_eq!(square.call(&mut store, 3.).unwrap(), 9.);
         assert_eq!(backprop.call(&mut store, 1.).unwrap(), 6.);
+    }
+
+    #[test]
+    fn test_tuple() {
+        let input = wat::parse_str(include_str!("wat/tuple.wat")).unwrap();
+
+        let mut ad = crate::Autodiff::new();
+        ad.export("tuple", "backprop");
+        let output = ad.transform(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let fwd = instance
+            .get_typed_func::<(i32, f64, i64, f32), (f32, i32, f64, i64)>(&mut store, "tuple")
+            .unwrap();
+        let bwd = instance
+            .get_typed_func::<(f32, i32, f64, i64), (i32, f64, i64, f32)>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(
+            fwd.call(&mut store, (1, 2., 3, 4.)).unwrap(),
+            (4., 1, 2., 3),
+        );
+        assert_eq!(
+            bwd.call(&mut store, (5., 6, 7., 8)).unwrap(),
+            (0, 7., 0, 5.),
+        );
     }
 
     #[test]

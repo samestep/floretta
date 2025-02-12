@@ -398,6 +398,9 @@ impl Func<'_> {
                 self.fwd.instruction(&Instruction::LocalGet(local_index));
                 let i = self.bwd_local(local_index);
                 match ty {
+                    wasm_encoder::ValType::I32 | wasm_encoder::ValType::I64 => {
+                        self.bwd.instruction(&Instruction::Drop);
+                    }
                     wasm_encoder::ValType::F32 => {
                         self.bwd.instruction(&Instruction::LocalSet(i));
                         self.bwd.instruction(&Instruction::F32Add);
@@ -408,7 +411,8 @@ impl Func<'_> {
                         self.bwd.instruction(&Instruction::F64Add);
                         self.bwd.instruction(&Instruction::LocalGet(i));
                     }
-                    _ => todo!(),
+                    wasm_encoder::ValType::V128 => unimplemented!(),
+                    wasm_encoder::ValType::Ref(_) => unimplemented!(),
                 }
             }
             Operator::LocalTee { local_index } => {
