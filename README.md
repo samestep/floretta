@@ -9,7 +9,7 @@ Floretta uses reverse-mode [automatic differentiation][] to transform a Wasm mod
 
 Together, these comprise the _vector-Jacobian product (VJP)_, which can then be used to compute the gradient of any function that returns a scalar.
 
-For every memory in the original Wasm module, Floretta adds an additional memory in the transformed module, to store the derivative of each scalar in the original memory. Also, Floretta adds two more memories to store the tape: one for `f32` values, and one for `f64` values.
+For every memory in the original Wasm module, Floretta adds an additional memory in the transformed module, to store the derivative of each scalar in the original memory. Also, Floretta adds two more memories to store the tape: one for 4-byte-aligned values (e.g. `f32`), and one for 8-byte-aligned values (e.g. `f64`).
 
 ## Usage
 

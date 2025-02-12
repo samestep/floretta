@@ -9,11 +9,11 @@ use wasmparser::{FunctionBody, Operator, Parser, Payload};
 
 use crate::{
     helper::{
-        helpers, FUNC_CONTROL_LOAD, FUNC_CONTROL_STORE, FUNC_F32_DIV_BWD, FUNC_F32_DIV_FWD,
-        FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F64_DIV_BWD, FUNC_F64_DIV_FWD, FUNC_F64_MUL_BWD,
-        FUNC_F64_MUL_FWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES,
-        TYPE_CONTROL_LOAD, TYPE_CONTROL_STORE, TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD,
-        TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD,
+        helpers, FUNC_F32_DIV_BWD, FUNC_F32_DIV_FWD, FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD,
+        FUNC_F64_DIV_BWD, FUNC_F64_DIV_FWD, FUNC_F64_MUL_BWD, FUNC_F64_MUL_FWD, FUNC_TAPE_I32,
+        FUNC_TAPE_I32_BWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES,
+        TYPE_DISPATCH, TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD,
+        TYPE_TAPE_I32, TYPE_TAPE_I32_BWD,
     },
     util::u32_to_usize,
     validate::{FunctionValidator, ModuleValidator},
@@ -26,7 +26,12 @@ pub fn transform(
     wasm_module: &[u8],
 ) -> Result<Vec<u8>, Error> {
     let mut types = TypeSection::new();
-    // Type for functions and blocks that consume a basic block index for control flow purposes.
+    // Type for control flow dispatch loop in the backward pass.
+    types.ty().func_type(&wasm_encoder::FuncType::new(
+        [wasm_encoder::ValType::I32],
+        [],
+    ));
+    // Type for storing a basic block index on the tape.
     types.ty().func_type(&wasm_encoder::FuncType::new(
         [wasm_encoder::ValType::I32],
         [],
@@ -57,8 +62,8 @@ pub fn transform(
     assert_eq!(types.len(), OFFSET_TYPES);
     let mut functions = FunctionSection::new();
     // Type indices for the tape helper functions.
-    functions.function(TYPE_CONTROL_STORE);
-    functions.function(TYPE_CONTROL_LOAD);
+    functions.function(TYPE_TAPE_I32);
+    functions.function(TYPE_TAPE_I32_BWD);
     functions.function(TYPE_F32_BIN_FWD);
     functions.function(TYPE_F32_BIN_FWD);
     functions.function(TYPE_F64_BIN_FWD);
@@ -526,7 +531,7 @@ impl Func<'_> {
     fn fwd_control_store(&mut self) {
         self.fwd
             .instruction(&Instruction::I32Const(self.bwd.basic_block_index()));
-        self.fwd.instruction(&Instruction::Call(FUNC_CONTROL_STORE));
+        self.fwd.instruction(&Instruction::Call(FUNC_TAPE_I32));
     }
 
     fn end_basic_block(&mut self) {
@@ -752,9 +757,7 @@ impl ReverseReverseFunction {
         // exited from the last basic block with an implicit return; so, when we enter the state
         // machine for the backward pass, we know to enter at that last basic block.
         Instruction::I32Const((n - 1).try_into().unwrap()).encode(&mut self.body);
-        // The dispatch loop block type signature consumes a basic block index; this happens to be
-        // the same type signature for storing a basic block index in the forward pass.
-        let blockty = wasm_encoder::BlockType::FunctionType(TYPE_CONTROL_STORE);
+        let blockty = wasm_encoder::BlockType::FunctionType(TYPE_DISPATCH);
         Instruction::Loop(blockty).encode(&mut self.body);
         for _ in 0..n {
             Instruction::Block(blockty).encode(&mut self.body);
@@ -774,7 +777,7 @@ impl ReverseReverseFunction {
         for i in (1..n).rev() {
             Instruction::End.encode(&mut self.body);
             self.basic_block(i);
-            Instruction::Call(FUNC_CONTROL_LOAD).encode(&mut self.body); // Load basic block index.
+            Instruction::Call(FUNC_TAPE_I32_BWD).encode(&mut self.body); // Load basic block index.
             Instruction::Br(i.try_into().unwrap()).encode(&mut self.body); // Branch to the `loop`.
         }
         Instruction::End.encode(&mut self.body);

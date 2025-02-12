@@ -9,9 +9,12 @@ use wasmparser::{IndirectNaming, Name, NameSectionReader, Naming};
 
 use crate::{
     helper::{
-        FUNC_CONTROL_LOAD, FUNC_CONTROL_STORE, FUNC_F32_DIV_BWD, FUNC_F32_DIV_FWD,
-        FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F64_DIV_BWD, FUNC_F64_DIV_FWD, FUNC_F64_MUL_BWD,
-        FUNC_F64_MUL_FWD, OFFSET_FUNCTIONS,
+        FUNC_F32_DIV_BWD, FUNC_F32_DIV_FWD, FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F64_DIV_BWD,
+        FUNC_F64_DIV_FWD, FUNC_F64_MUL_BWD, FUNC_F64_MUL_FWD, FUNC_TAPE_I32, FUNC_TAPE_I32_BWD,
+        GLOBAL_TAPE_ALIGN_4, GLOBAL_TAPE_ALIGN_8, MEM_TAPE_ALIGN_4, MEM_TAPE_ALIGN_8,
+        OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES, TYPE_DISPATCH,
+        TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD, TYPE_TAPE_I32,
+        TYPE_TAPE_I32_BWD,
     },
     run::StackHeight,
     Error,
@@ -176,6 +179,12 @@ pub struct Names<'a> {
     function_gen: NameGen<'a>,
     locals_map: wasm_encoder::IndirectNameMap,
     locals_maps: HashMap<u32, (wasm_encoder::NameMap, NameGen<'a>)>,
+    types_map: wasm_encoder::NameMap,
+    types_gen: NameGen<'a>,
+    memories_map: wasm_encoder::NameMap,
+    memories_gen: NameGen<'a>,
+    globals_map: wasm_encoder::NameMap,
+    globals_gen: NameGen<'a>,
 }
 
 impl<'a> Names<'a> {
@@ -186,6 +195,15 @@ impl<'a> Names<'a> {
         let mut function_gen = None;
         let mut locals_map = wasm_encoder::IndirectNameMap::new();
         let mut locals_maps = HashMap::new();
+        let mut types_map = wasm_encoder::NameMap::new();
+        let mut types_set = Some(NameSet::new());
+        let mut types_gen = None;
+        let mut memories_map = wasm_encoder::NameMap::new();
+        let mut memories_set = Some(NameSet::new());
+        let mut memories_gen = None;
+        let mut globals_map = wasm_encoder::NameMap::new();
+        let mut globals_set = Some(NameSet::new());
+        let mut globals_gen = None;
         for entry in reader {
             match entry? {
                 Name::Module {
@@ -229,6 +247,49 @@ impl<'a> Names<'a> {
                         locals_maps.insert(index, (locals_bwd, local_names.done()));
                     }
                 }
+                Name::Type(types_in) => {
+                    let mut type_names = types_set.take().unwrap();
+                    for ty in types_in.clone() {
+                        let Naming { index, name } = ty?;
+                        types_map.append(OFFSET_TYPES + 2 * index, name);
+                        type_names.insert(name);
+                    }
+                    let mut type_names = type_names.done();
+                    for ty in types_in {
+                        let Naming { index, name } = ty?;
+                        types_map.append(
+                            OFFSET_TYPES + 2 * index + 1,
+                            &type_names.insert(&format!("{name}_bwd")),
+                        );
+                    }
+                    types_gen = Some(type_names);
+                }
+                Name::Memory(memories_in) => {
+                    let mut memory_names = memories_set.take().unwrap();
+                    for memory in memories_in.clone() {
+                        let Naming { index, name } = memory?;
+                        memories_map.append(OFFSET_MEMORIES + 2 * index, name);
+                        memory_names.insert(name);
+                    }
+                    let mut memory_names = memory_names.done();
+                    for memory in memories_in {
+                        let Naming { index, name } = memory?;
+                        memories_map.append(
+                            OFFSET_MEMORIES + 2 * index + 1,
+                            &memory_names.insert(&format!("{name}_bwd")),
+                        );
+                    }
+                    memories_gen = Some(memory_names);
+                }
+                Name::Global(globals_in) => {
+                    let mut global_names = globals_set.take().unwrap();
+                    for global in globals_in {
+                        let Naming { index, name } = global?;
+                        globals_map.append(OFFSET_GLOBALS + index, name);
+                        global_names.insert(name);
+                    }
+                    globals_gen = Some(global_names.done());
+                }
                 _ => {} // TODO
             }
         }
@@ -238,6 +299,12 @@ impl<'a> Names<'a> {
             function_gen: function_gen.unwrap_or_default(),
             locals_map,
             locals_maps,
+            types_map,
+            types_gen: types_gen.unwrap_or_default(),
+            memories_map,
+            memories_gen: memories_gen.unwrap_or_default(),
+            globals_map,
+            globals_gen: globals_gen.unwrap_or_default(),
         })
     }
 }
@@ -249,9 +316,16 @@ pub fn name_section(functions: impl FuncInfo, names: Option<Names>) -> NameSecti
         mut function_gen,
         mut locals_map,
         mut locals_maps,
+        mut types_map,
+        mut types_gen,
+        mut memories_map,
+        mut memories_gen,
+        mut globals_map,
+        mut globals_gen,
     } = names.unwrap_or_default();
-    function_map.append(FUNC_CONTROL_STORE, &function_gen.insert("control_store"));
-    function_map.append(FUNC_CONTROL_LOAD, &function_gen.insert("control_load"));
+
+    function_map.append(FUNC_TAPE_I32, &function_gen.insert("tape_i32"));
+    function_map.append(FUNC_TAPE_I32_BWD, &function_gen.insert("tape_i32_bwd"));
     function_map.append(FUNC_F32_MUL_FWD, &function_gen.insert("f32_mul"));
     function_map.append(FUNC_F32_DIV_FWD, &function_gen.insert("f32_div"));
     function_map.append(FUNC_F64_MUL_FWD, &function_gen.insert("f64_mul"));
@@ -261,6 +335,7 @@ pub fn name_section(functions: impl FuncInfo, names: Option<Names>) -> NameSecti
     function_map.append(FUNC_F64_MUL_BWD, &function_gen.insert("f64_mul_bwd"));
     function_map.append(FUNC_F64_DIV_BWD, &function_gen.insert("f64_div_bwd"));
     section.functions(&function_map);
+
     for index in 0..functions.num_functions() {
         let (locals, local_names) = locals_maps
             .entry(index)
@@ -292,6 +367,24 @@ pub fn name_section(functions: impl FuncInfo, names: Option<Names>) -> NameSecti
         locals_map.append(OFFSET_FUNCTIONS + 2 * index + 1, locals);
     }
     section.locals(&locals_map);
+
+    types_map.append(TYPE_DISPATCH, &types_gen.insert("dispatch"));
+    types_map.append(TYPE_TAPE_I32, &types_gen.insert("tape_i32"));
+    types_map.append(TYPE_TAPE_I32_BWD, &types_gen.insert("tape_i32_bwd"));
+    types_map.append(TYPE_F32_BIN_FWD, &types_gen.insert("f32_bin"));
+    types_map.append(TYPE_F32_BIN_BWD, &types_gen.insert("f32_bin_bwd"));
+    types_map.append(TYPE_F64_BIN_FWD, &types_gen.insert("f64_bin"));
+    types_map.append(TYPE_F64_BIN_BWD, &types_gen.insert("f64_bin_bwd"));
+    section.types(&types_map);
+
+    memories_map.append(MEM_TAPE_ALIGN_4, &memories_gen.insert("tape_align_4"));
+    memories_map.append(MEM_TAPE_ALIGN_8, &memories_gen.insert("tape_align_8"));
+    section.memories(&memories_map);
+
+    globals_map.append(GLOBAL_TAPE_ALIGN_4, &globals_gen.insert("tape_align_4"));
+    globals_map.append(GLOBAL_TAPE_ALIGN_8, &globals_gen.insert("tape_align_8"));
+    section.globals(&globals_map);
+
     section
 }
 
