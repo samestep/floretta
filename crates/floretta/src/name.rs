@@ -16,8 +16,7 @@ use crate::{
         TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD, TYPE_TAPE_I32,
         TYPE_TAPE_I32_BWD,
     },
-    run::StackHeight,
-    Error,
+    transform::StackHeight,
 };
 
 struct NameNumbers {
@@ -188,7 +187,7 @@ pub struct Names<'a> {
 }
 
 impl<'a> Names<'a> {
-    pub fn new(functions: impl FuncInfo, reader: NameSectionReader<'a>) -> Result<Self, Error> {
+    pub fn new(functions: impl FuncInfo, reader: NameSectionReader<'a>) -> crate::Result<Self> {
         let mut section = NameSection::new();
         let mut function_map = wasm_encoder::NameMap::new();
         let mut function_set = Some(NameSet::new());

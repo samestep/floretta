@@ -1,11 +1,11 @@
-use std::iter;
+use std::{collections::HashMap, iter};
 
 use wasm_encoder::{
     reencode::{Reencode, RoundtripReencoder},
     CodeSection, Encode, ExportKind, ExportSection, Function, FunctionSection, GlobalSection,
     InstructionSink, MemorySection, Module, TypeSection,
 };
-use wasmparser::{FunctionBody, Operator, Parser, Payload};
+use wasmparser::{FunctionBody, Operator, Parser, Payload, Validator, WasmFeatures};
 
 use crate::{
     helper::{
@@ -17,14 +17,48 @@ use crate::{
     },
     util::u32_to_usize,
     validate::{FunctionValidator, ModuleValidator},
-    Config, Error,
 };
 
-pub fn transform(
+#[derive(Debug, Default)]
+pub struct Config {
+    /// Exported functions whose backward passes should also be exported.
+    pub exports: HashMap<String, String>,
+
+    /// Whether to include the names section in the output Wasm.
+    #[cfg(feature = "names")]
+    pub names: bool,
+}
+
+pub trait Runner {
+    fn transform(&self, config: &Config, wasm_module: &[u8]) -> crate::Result<Vec<u8>>;
+}
+
+// We make `Runner` a `trait` instead of just an `enum`, to facilitate dead code elimination when
+// validation is not needed.
+
+pub struct Validate;
+
+pub struct NoValidate;
+
+impl Runner for Validate {
+    fn transform(&self, config: &Config, wasm_module: &[u8]) -> crate::Result<Vec<u8>> {
+        let features = WasmFeatures::empty() | WasmFeatures::MULTI_VALUE | WasmFeatures::FLOATS;
+        let validator = Validator::new_with_features(features);
+        transform(validator, config, wasm_module)
+    }
+}
+
+impl Runner for NoValidate {
+    fn transform(&self, config: &Config, wasm_module: &[u8]) -> crate::Result<Vec<u8>> {
+        transform((), config, wasm_module)
+    }
+}
+
+fn transform(
     mut validator: impl ModuleValidator,
     config: &Config,
     wasm_module: &[u8],
-) -> Result<Vec<u8>, Error> {
+) -> crate::Result<Vec<u8>> {
     let mut types = TypeSection::new();
     // Type for control flow dispatch loop in the backward pass.
     types.ty().func_type(&wasm_encoder::FuncType::new(
@@ -265,7 +299,7 @@ fn function(
     signatures: &[wasm_encoder::FuncType],
     index: u32,
     body: FunctionBody,
-) -> Result<(FunctionInfo, Vec<u8>, Vec<u8>), Error> {
+) -> crate::Result<(FunctionInfo, Vec<u8>, Vec<u8>)> {
     let sig = &signatures[u32_to_usize(index)];
     let num_params: u32 = sig.params().len().try_into().unwrap();
     let num_results: u32 = sig.results().len().try_into().unwrap();
@@ -365,7 +399,7 @@ struct Func<'a> {
 
 impl Func<'_> {
     /// Process an instruction.
-    fn instruction(&mut self, op: Operator<'_>) -> Result<(), Error> {
+    fn instruction(&mut self, op: Operator<'_>) -> crate::Result<()> {
         match op {
             Operator::Loop { blockty } => {
                 match blockty {

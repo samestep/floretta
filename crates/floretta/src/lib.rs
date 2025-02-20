@@ -33,112 +33,29 @@
 //! [`wat`]: https://crates.io/crates/wat
 //! [wasmtime]: https://crates.io/crates/wasmtime
 
+mod api;
 mod helper;
 #[cfg(feature = "names")]
 mod name;
-mod run;
+mod transform;
 mod util;
 mod validate;
 
-use std::collections::HashMap;
-
 use wasm_encoder::reencode;
-use wasmparser::{BinaryReaderError, Validator, WasmFeatures};
+use wasmparser::BinaryReaderError;
 
-/// An error that occurred during code transformation.
+pub use api::*;
+
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
-    /// The error occurred while parsing or validating the input Wasm.
+enum ErrorImpl {
     #[error("Wasm parsing or validation error: {0}")]
     Parse(#[from] BinaryReaderError),
 
-    /// The error occurred while reencoding part of the input Wasm into the output Wasm.
     #[error("Wasm reencoding error: {0}")]
     Reencode(#[from] reencode::Error),
 }
 
-#[derive(Default)]
-struct Config {
-    /// Exported functions whose backward passes should also be exported.
-    exports: HashMap<String, String>,
-
-    /// Whether to include the names section in the output Wasm.
-    #[cfg(feature = "names")]
-    names: bool,
-}
-
-/// WebAssembly code transformation to perform reverse-mode automatic differentiation.
-pub struct Autodiff {
-    runner: Box<dyn Runner>,
-    config: Config,
-}
-
-impl Default for Autodiff {
-    fn default() -> Self {
-        Self {
-            runner: Box::new(Validate),
-            config: Default::default(),
-        }
-    }
-}
-
-impl Autodiff {
-    /// Default configuration.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Do not validate input Wasm.
-    pub fn no_validate() -> Self {
-        Self {
-            runner: Box::new(NoValidate),
-            config: Default::default(),
-        }
-    }
-
-    /// Include the name section in the output Wasm.
-    #[cfg(feature = "names")]
-    pub fn names(&mut self) {
-        self.config.names = true;
-    }
-
-    /// Export the backward pass of a function that is already exported.
-    pub fn export(&mut self, function: impl ToString, gradient: impl ToString) {
-        self.config
-            .exports
-            .insert(function.to_string(), gradient.to_string());
-    }
-
-    /// Transform a WebAssembly module using this configuration.
-    pub fn transform(&self, wasm_module: &[u8]) -> Result<Vec<u8>, Error> {
-        self.runner.transform(&self.config, wasm_module)
-    }
-}
-
-trait Runner {
-    fn transform(&self, config: &Config, wasm_module: &[u8]) -> Result<Vec<u8>, Error>;
-}
-
-// We make `Runner` a `trait` instead of just an `enum`, to facilitate dead code elimination when
-// validation is not needed.
-
-struct Validate;
-
-struct NoValidate;
-
-impl Runner for Validate {
-    fn transform(&self, config: &Config, wasm_module: &[u8]) -> Result<Vec<u8>, Error> {
-        let features = WasmFeatures::empty() | WasmFeatures::MULTI_VALUE | WasmFeatures::FLOATS;
-        let validator = Validator::new_with_features(features);
-        run::transform(validator, config, wasm_module)
-    }
-}
-
-impl Runner for NoValidate {
-    fn transform(&self, config: &Config, wasm_module: &[u8]) -> Result<Vec<u8>, Error> {
-        run::transform((), config, wasm_module)
-    }
-}
+type Result<T> = std::result::Result<T, ErrorImpl>;
 
 #[cfg(test)]
 mod tests {
