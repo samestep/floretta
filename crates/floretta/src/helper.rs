@@ -1,4 +1,4 @@
-use wasm_encoder::{Function, Instruction};
+use wasm_encoder::Function;
 
 pub const OFFSET_TYPES: u32 = 7;
 pub const TYPE_DISPATCH: u32 = 0;
@@ -53,32 +53,34 @@ struct Tape {
 
 impl Tape {
     fn grow(self, f: &mut Function, local: u32, bytes: i32) {
-        f.instruction(&Instruction::GlobalGet(self.global));
-        f.instruction(&Instruction::LocalTee(self.local));
-        f.instruction(&Instruction::I32Const(bytes + 65535));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::I32Const(16));
-        f.instruction(&Instruction::I32ShrU);
-        f.instruction(&Instruction::MemorySize(self.memory));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalTee(local));
-        f.instruction(&Instruction::If(wasm_encoder::BlockType::Empty));
-        f.instruction(&Instruction::LocalGet(local));
-        f.instruction(&Instruction::MemoryGrow(self.memory));
-        f.instruction(&Instruction::Drop);
-        f.instruction(&Instruction::End);
-        f.instruction(&Instruction::LocalGet(self.local));
-        f.instruction(&Instruction::I32Const(bytes));
-        f.instruction(&Instruction::I32Add);
-        f.instruction(&Instruction::GlobalSet(self.global));
+        f.instructions()
+            .global_get(self.global)
+            .local_tee(self.local)
+            .i32_const(bytes + 65535)
+            .i32_add()
+            .i32_const(16)
+            .i32_shr_u()
+            .memory_size(self.memory)
+            .i32_sub()
+            .local_tee(local)
+            .if_(wasm_encoder::BlockType::Empty)
+            .local_get(local)
+            .memory_grow(self.memory)
+            .drop()
+            .end()
+            .local_get(self.local)
+            .i32_const(bytes)
+            .i32_add()
+            .global_set(self.global);
     }
 
     fn shrink(self, f: &mut Function, bytes: i32) {
-        f.instruction(&Instruction::GlobalGet(self.global));
-        f.instruction(&Instruction::I32Const(bytes));
-        f.instruction(&Instruction::I32Sub);
-        f.instruction(&Instruction::LocalTee(self.local));
-        f.instruction(&Instruction::GlobalSet(self.global));
+        f.instructions()
+            .global_get(self.global)
+            .i32_const(bytes)
+            .i32_sub()
+            .local_tee(self.local)
+            .global_set(self.global);
     }
 }
 
@@ -91,14 +93,15 @@ fn func_tape_i32() -> Function {
         local: i,
     }
     .grow(&mut f, n, 4);
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::LocalGet(k));
-    f.instruction(&Instruction::I32Store(wasm_encoder::MemArg {
-        offset: 0,
-        align: 2,
-        memory_index: MEM_TAPE_ALIGN_4,
-    }));
-    f.instruction(&Instruction::End);
+    f.instructions()
+        .local_get(i)
+        .local_get(k)
+        .i32_store(wasm_encoder::MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: MEM_TAPE_ALIGN_4,
+        })
+        .end();
     f
 }
 
@@ -111,13 +114,14 @@ fn func_tape_i32_bwd() -> Function {
         local: i,
     }
     .shrink(&mut f, 4);
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
-        offset: 0,
-        align: 2,
-        memory_index: MEM_TAPE_ALIGN_4,
-    }));
-    f.instruction(&Instruction::End);
+    f.instructions()
+        .local_get(i)
+        .i32_load(wasm_encoder::MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: MEM_TAPE_ALIGN_4,
+        })
+        .end();
     f
 }
 
@@ -130,24 +134,25 @@ fn func_f32_mul_fwd() -> Function {
         local: i,
     }
     .grow(&mut f, n, 8);
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::LocalGet(x));
-    f.instruction(&Instruction::F32Store(wasm_encoder::MemArg {
-        offset: 0,
-        align: 2,
-        memory_index: MEM_TAPE_ALIGN_4,
-    }));
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::LocalGet(y));
-    f.instruction(&Instruction::F32Store(wasm_encoder::MemArg {
-        offset: 4,
-        align: 2,
-        memory_index: MEM_TAPE_ALIGN_4,
-    }));
-    f.instruction(&Instruction::LocalGet(x));
-    f.instruction(&Instruction::LocalGet(y));
-    f.instruction(&Instruction::F32Mul);
-    f.instruction(&Instruction::End);
+    f.instructions()
+        .local_get(i)
+        .local_get(x)
+        .f32_store(wasm_encoder::MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: MEM_TAPE_ALIGN_4,
+        })
+        .local_get(i)
+        .local_get(y)
+        .f32_store(wasm_encoder::MemArg {
+            offset: 4,
+            align: 2,
+            memory_index: MEM_TAPE_ALIGN_4,
+        })
+        .local_get(x)
+        .local_get(y)
+        .f32_mul()
+        .end();
     f
 }
 
@@ -163,25 +168,26 @@ fn func_f32_div_fwd() -> Function {
         local: i,
     }
     .grow(&mut f, n, 8);
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::LocalGet(y));
-    f.instruction(&Instruction::F32Store(wasm_encoder::MemArg {
-        offset: 0,
-        align: 2,
-        memory_index: MEM_TAPE_ALIGN_4,
-    }));
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::LocalGet(x));
-    f.instruction(&Instruction::LocalGet(y));
-    f.instruction(&Instruction::F32Div);
-    f.instruction(&Instruction::LocalTee(z));
-    f.instruction(&Instruction::F32Store(wasm_encoder::MemArg {
-        offset: 4,
-        align: 2,
-        memory_index: MEM_TAPE_ALIGN_4,
-    }));
-    f.instruction(&Instruction::LocalGet(z));
-    f.instruction(&Instruction::End);
+    f.instructions()
+        .local_get(i)
+        .local_get(y)
+        .f32_store(wasm_encoder::MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: MEM_TAPE_ALIGN_4,
+        })
+        .local_get(i)
+        .local_get(x)
+        .local_get(y)
+        .f32_div()
+        .local_tee(z)
+        .f32_store(wasm_encoder::MemArg {
+            offset: 4,
+            align: 2,
+            memory_index: MEM_TAPE_ALIGN_4,
+        })
+        .local_get(z)
+        .end();
     f
 }
 
@@ -194,24 +200,25 @@ fn func_f64_mul_fwd() -> Function {
         local: i,
     }
     .grow(&mut f, n, 16);
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::LocalGet(x));
-    f.instruction(&Instruction::F64Store(wasm_encoder::MemArg {
-        offset: 0,
-        align: 3,
-        memory_index: MEM_TAPE_ALIGN_8,
-    }));
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::LocalGet(y));
-    f.instruction(&Instruction::F64Store(wasm_encoder::MemArg {
-        offset: 8,
-        align: 3,
-        memory_index: MEM_TAPE_ALIGN_8,
-    }));
-    f.instruction(&Instruction::LocalGet(x));
-    f.instruction(&Instruction::LocalGet(y));
-    f.instruction(&Instruction::F64Mul);
-    f.instruction(&Instruction::End);
+    f.instructions()
+        .local_get(i)
+        .local_get(x)
+        .f64_store(wasm_encoder::MemArg {
+            offset: 0,
+            align: 3,
+            memory_index: MEM_TAPE_ALIGN_8,
+        })
+        .local_get(i)
+        .local_get(y)
+        .f64_store(wasm_encoder::MemArg {
+            offset: 8,
+            align: 3,
+            memory_index: MEM_TAPE_ALIGN_8,
+        })
+        .local_get(x)
+        .local_get(y)
+        .f64_mul()
+        .end();
     f
 }
 
@@ -227,25 +234,26 @@ fn func_f64_div_fwd() -> Function {
         local: i,
     }
     .grow(&mut f, n, 16);
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::LocalGet(y));
-    f.instruction(&Instruction::F64Store(wasm_encoder::MemArg {
-        offset: 0,
-        align: 3,
-        memory_index: MEM_TAPE_ALIGN_8,
-    }));
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::LocalGet(x));
-    f.instruction(&Instruction::LocalGet(y));
-    f.instruction(&Instruction::F64Div);
-    f.instruction(&Instruction::LocalTee(z));
-    f.instruction(&Instruction::F64Store(wasm_encoder::MemArg {
-        offset: 8,
-        align: 3,
-        memory_index: MEM_TAPE_ALIGN_8,
-    }));
-    f.instruction(&Instruction::LocalGet(z));
-    f.instruction(&Instruction::End);
+    f.instructions()
+        .local_get(i)
+        .local_get(y)
+        .f64_store(wasm_encoder::MemArg {
+            offset: 0,
+            align: 3,
+            memory_index: MEM_TAPE_ALIGN_8,
+        })
+        .local_get(i)
+        .local_get(x)
+        .local_get(y)
+        .f64_div()
+        .local_tee(z)
+        .f64_store(wasm_encoder::MemArg {
+            offset: 8,
+            align: 3,
+            memory_index: MEM_TAPE_ALIGN_8,
+        })
+        .local_get(z)
+        .end();
     f
 }
 
@@ -258,23 +266,24 @@ fn func_f32_mul_bwd() -> Function {
         local: i,
     }
     .shrink(&mut f, 8);
-    f.instruction(&Instruction::LocalGet(dz));
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::F32Load(wasm_encoder::MemArg {
-        offset: 4,
-        align: 2,
-        memory_index: MEM_TAPE_ALIGN_4,
-    }));
-    f.instruction(&Instruction::F32Mul);
-    f.instruction(&Instruction::LocalGet(dz));
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::F32Load(wasm_encoder::MemArg {
-        offset: 0,
-        align: 2,
-        memory_index: MEM_TAPE_ALIGN_4,
-    }));
-    f.instruction(&Instruction::F32Mul);
-    f.instruction(&Instruction::End);
+    f.instructions()
+        .local_get(dz)
+        .local_get(i)
+        .f32_load(wasm_encoder::MemArg {
+            offset: 4,
+            align: 2,
+            memory_index: MEM_TAPE_ALIGN_4,
+        })
+        .f32_mul()
+        .local_get(dz)
+        .local_get(i)
+        .f32_load(wasm_encoder::MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: MEM_TAPE_ALIGN_4,
+        })
+        .f32_mul()
+        .end();
     f
 }
 
@@ -290,25 +299,26 @@ fn func_f32_div_bwd() -> Function {
         local: i,
     }
     .shrink(&mut f, 8);
-    f.instruction(&Instruction::LocalGet(dz));
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::F32Load(wasm_encoder::MemArg {
-        offset: 0,
-        align: 2,
-        memory_index: MEM_TAPE_ALIGN_4,
-    }));
-    f.instruction(&Instruction::F32Div);
-    f.instruction(&Instruction::LocalTee(dx));
-    f.instruction(&Instruction::LocalGet(dx));
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::F32Load(wasm_encoder::MemArg {
-        offset: 4,
-        align: 2,
-        memory_index: MEM_TAPE_ALIGN_4,
-    }));
-    f.instruction(&Instruction::F32Neg);
-    f.instruction(&Instruction::F32Mul);
-    f.instruction(&Instruction::End);
+    f.instructions()
+        .local_get(dz)
+        .local_get(i)
+        .f32_load(wasm_encoder::MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: MEM_TAPE_ALIGN_4,
+        })
+        .f32_div()
+        .local_tee(dx)
+        .local_get(dx)
+        .local_get(i)
+        .f32_load(wasm_encoder::MemArg {
+            offset: 4,
+            align: 2,
+            memory_index: MEM_TAPE_ALIGN_4,
+        })
+        .f32_neg()
+        .f32_mul()
+        .end();
     f
 }
 
@@ -321,23 +331,24 @@ fn func_f64_mul_bwd() -> Function {
         local: i,
     }
     .shrink(&mut f, 16);
-    f.instruction(&Instruction::LocalGet(dz));
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::F64Load(wasm_encoder::MemArg {
-        offset: 8,
-        align: 3,
-        memory_index: MEM_TAPE_ALIGN_8,
-    }));
-    f.instruction(&Instruction::F64Mul);
-    f.instruction(&Instruction::LocalGet(dz));
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::F64Load(wasm_encoder::MemArg {
-        offset: 0,
-        align: 3,
-        memory_index: MEM_TAPE_ALIGN_8,
-    }));
-    f.instruction(&Instruction::F64Mul);
-    f.instruction(&Instruction::End);
+    f.instructions()
+        .local_get(dz)
+        .local_get(i)
+        .f64_load(wasm_encoder::MemArg {
+            offset: 8,
+            align: 3,
+            memory_index: MEM_TAPE_ALIGN_8,
+        })
+        .f64_mul()
+        .local_get(dz)
+        .local_get(i)
+        .f64_load(wasm_encoder::MemArg {
+            offset: 0,
+            align: 3,
+            memory_index: MEM_TAPE_ALIGN_8,
+        })
+        .f64_mul()
+        .end();
     f
 }
 
@@ -353,24 +364,25 @@ fn func_f64_div_bwd() -> Function {
         local: i,
     }
     .shrink(&mut f, 16);
-    f.instruction(&Instruction::LocalGet(dz));
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::F64Load(wasm_encoder::MemArg {
-        offset: 0,
-        align: 3,
-        memory_index: MEM_TAPE_ALIGN_8,
-    }));
-    f.instruction(&Instruction::F64Div);
-    f.instruction(&Instruction::LocalTee(dx));
-    f.instruction(&Instruction::LocalGet(dx));
-    f.instruction(&Instruction::LocalGet(i));
-    f.instruction(&Instruction::F64Load(wasm_encoder::MemArg {
-        offset: 8,
-        align: 3,
-        memory_index: MEM_TAPE_ALIGN_8,
-    }));
-    f.instruction(&Instruction::F64Neg);
-    f.instruction(&Instruction::F64Mul);
-    f.instruction(&Instruction::End);
+    f.instructions()
+        .local_get(dz)
+        .local_get(i)
+        .f64_load(wasm_encoder::MemArg {
+            offset: 0,
+            align: 3,
+            memory_index: MEM_TAPE_ALIGN_8,
+        })
+        .f64_div()
+        .local_tee(dx)
+        .local_get(dx)
+        .local_get(i)
+        .f64_load(wasm_encoder::MemArg {
+            offset: 8,
+            align: 3,
+            memory_index: MEM_TAPE_ALIGN_8,
+        })
+        .f64_neg()
+        .f64_mul()
+        .end();
     f
 }

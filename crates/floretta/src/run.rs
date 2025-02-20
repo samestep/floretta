@@ -1,9 +1,9 @@
-use std::{borrow::Cow, iter};
+use std::iter;
 
 use wasm_encoder::{
     reencode::{Reencode, RoundtripReencoder},
     CodeSection, Encode, ExportKind, ExportSection, Function, FunctionSection, GlobalSection,
-    Instruction, MemorySection, Module, TypeSection,
+    InstructionSink, MemorySection, Module, TypeSection,
 };
 use wasmparser::{FunctionBody, Operator, Parser, Payload};
 
@@ -297,7 +297,7 @@ fn function(
     // pushing the local corresponding to the last parameter first, then work downward to pushing
     // the first parameter on the bottom of the stack.
     for i in (0..num_params).rev() {
-        bwd.instruction(&Instruction::LocalGet(num_results + i));
+        bwd.instructions(|insn| insn.local_get(num_results + i));
     }
     let mut operators_reader = body.get_operators_reader()?;
     let mut func = Func {
@@ -378,43 +378,42 @@ impl Func<'_> {
                 self.control_stack.push(Control::Loop);
                 self.fwd_control_store();
                 self.fwd
-                    .instruction(&Instruction::Loop(RoundtripReencoder.block_type(blockty)?));
+                    .instructions()
+                    .loop_(RoundtripReencoder.block_type(blockty)?);
                 self.end_basic_block();
             }
             Operator::End => match self.control_stack.pop() {
                 Some(Control::Loop) => {
-                    self.fwd.instruction(&Instruction::End);
+                    self.fwd.instructions().end();
                 }
                 None => {
-                    self.fwd.instruction(&Instruction::End);
+                    self.fwd.instructions().end();
                     self.end_basic_block();
                 }
             },
             Operator::BrIf { relative_depth } => {
                 self.pop();
                 self.fwd_control_store();
-                self.bwd.instruction(&Instruction::I32Const(0));
+                self.bwd.instructions(|insn| insn.i32_const(0));
                 self.end_basic_block();
-                self.fwd.instruction(&Instruction::BrIf(relative_depth));
+                self.fwd.instructions().br_if(relative_depth);
             }
             Operator::LocalGet { local_index } => {
                 let ty = self.local(local_index);
                 self.push(ty);
-                self.fwd.instruction(&Instruction::LocalGet(local_index));
+                self.fwd.instructions().local_get(local_index);
                 let i = self.bwd_local(local_index);
                 match ty {
                     wasm_encoder::ValType::I32 | wasm_encoder::ValType::I64 => {
-                        self.bwd.instruction(&Instruction::Drop);
+                        self.bwd.instructions(|insn| insn.drop());
                     }
                     wasm_encoder::ValType::F32 => {
-                        self.bwd.instruction(&Instruction::LocalSet(i));
-                        self.bwd.instruction(&Instruction::F32Add);
-                        self.bwd.instruction(&Instruction::LocalGet(i));
+                        self.bwd
+                            .instructions(|insn| insn.local_get(i).f32_add().local_set(i));
                     }
                     wasm_encoder::ValType::F64 => {
-                        self.bwd.instruction(&Instruction::LocalSet(i));
-                        self.bwd.instruction(&Instruction::F64Add);
-                        self.bwd.instruction(&Instruction::LocalGet(i));
+                        self.bwd
+                            .instructions(|insn| insn.local_get(i).f64_add().local_set(i));
                     }
                     wasm_encoder::ValType::V128 => unimplemented!(),
                     wasm_encoder::ValType::Ref(_) => unimplemented!(),
@@ -424,62 +423,62 @@ impl Func<'_> {
                 let ty = self.local(local_index);
                 self.pop();
                 self.push(ty);
-                self.fwd.instruction(&Instruction::LocalTee(local_index));
+                self.fwd.instructions().local_tee(local_index);
                 let i = self.bwd_local(local_index);
                 match ty {
                     wasm_encoder::ValType::F64 => {
-                        self.bwd.instruction(&Instruction::LocalSet(i));
-                        self.bwd.instruction(&Instruction::F64Const(0.));
-                        self.bwd.instruction(&Instruction::F64Add);
-                        self.bwd.instruction(&Instruction::LocalGet(i));
+                        self.bwd.instructions(|insn| {
+                            insn.local_get(i).f64_add().f64_const(0.).local_set(i)
+                        });
                     }
                     _ => todo!(),
                 }
             }
             Operator::F64Const { value } => {
                 self.push_f64();
-                self.fwd.instruction(&Instruction::F64Const(value.into()));
-                self.bwd.instruction(&Instruction::Drop);
+                self.fwd.instructions().f64_const(value.into());
+                self.bwd.instructions(|insn| insn.drop());
             }
             Operator::F64Ge => {
                 self.pop2();
                 self.push_i32();
-                self.fwd.instruction(&Instruction::F64Ge);
-                self.bwd.instruction(&Instruction::F64Const(0.));
-                self.bwd.instruction(&Instruction::F64Const(0.));
-                self.bwd.instruction(&Instruction::Drop);
+                self.fwd.instructions().f64_ge();
+                self.bwd
+                    .instructions(|insn| insn.drop().f64_const(0.).f64_const(0.));
             }
             Operator::F32Mul => {
                 self.pop2();
                 self.push_f32();
-                self.fwd.instruction(&Instruction::Call(FUNC_F32_MUL_FWD));
-                self.bwd.instruction(&Instruction::Call(FUNC_F32_MUL_BWD));
+                self.fwd.instructions().call(FUNC_F32_MUL_FWD);
+                self.bwd.instructions(|insn| insn.call(FUNC_F32_MUL_BWD));
             }
             Operator::F32Div => {
                 self.pop2();
                 self.push_f32();
-                self.fwd.instruction(&Instruction::Call(FUNC_F32_DIV_FWD));
-                self.bwd.instruction(&Instruction::Call(FUNC_F32_DIV_BWD));
+                self.fwd.instructions().call(FUNC_F32_DIV_FWD);
+                self.bwd.instructions(|insn| insn.call(FUNC_F32_DIV_BWD));
             }
             Operator::F64Sub => {
                 self.pop2();
                 self.push_f64();
-                self.fwd.instruction(&Instruction::F64Sub);
-                self.bwd.instruction(&Instruction::F64Neg);
-                self.bwd.instruction(&Instruction::LocalGet(self.tmp_f64));
-                self.bwd.instruction(&Instruction::LocalTee(self.tmp_f64));
+                self.fwd.instructions().f64_sub();
+                self.bwd.instructions(|insn| {
+                    insn.local_tee(self.tmp_f64)
+                        .local_get(self.tmp_f64)
+                        .f64_neg()
+                });
             }
             Operator::F64Mul => {
                 self.pop2();
                 self.push_f64();
-                self.fwd.instruction(&Instruction::Call(FUNC_F64_MUL_FWD));
-                self.bwd.instruction(&Instruction::Call(FUNC_F64_MUL_BWD));
+                self.fwd.instructions().call(FUNC_F64_MUL_FWD);
+                self.bwd.instructions(|insn| insn.call(FUNC_F64_MUL_BWD));
             }
             Operator::F64Div => {
                 self.pop2();
                 self.push_f64();
-                self.fwd.instruction(&Instruction::Call(FUNC_F64_DIV_FWD));
-                self.bwd.instruction(&Instruction::Call(FUNC_F64_DIV_BWD));
+                self.fwd.instructions().call(FUNC_F64_DIV_FWD);
+                self.bwd.instructions(|insn| insn.call(FUNC_F64_DIV_BWD));
             }
             _ => unimplemented!("{op:?}"),
         }
@@ -530,8 +529,9 @@ impl Func<'_> {
     /// In the forward pass, store the current basic block index on the tape.
     fn fwd_control_store(&mut self) {
         self.fwd
-            .instruction(&Instruction::I32Const(self.bwd.basic_block_index()));
-        self.fwd.instruction(&Instruction::Call(FUNC_TAPE_I32));
+            .instructions()
+            .i32_const(self.bwd.basic_block_index())
+            .call(FUNC_TAPE_I32);
     }
 
     fn end_basic_block(&mut self) {
@@ -685,8 +685,11 @@ impl ReverseFunction {
         self.stacks.push(ty);
     }
 
-    fn instruction(&mut self, instruction: &Instruction) {
-        reverse_encode(&mut self.body, instruction);
+    fn instructions<F>(&mut self, f: F)
+    where
+        for<'a, 'b> F: FnOnce(&'a mut InstructionSink<'b>) -> &'a mut InstructionSink<'b>,
+    {
+        reverse_encode(&mut self.body, f);
     }
 
     fn basic_block_index(&self) -> i32 {
@@ -747,45 +750,44 @@ impl ReverseReverseFunction {
     fn consume(mut self, operand_stack: &[wasm_encoder::ValType]) -> Vec<u8> {
         let mut operand_stack_height = StackHeight::new();
         for (i, &ty) in (0..).zip(operand_stack.iter()) {
-            Instruction::LocalGet(i).encode(&mut self.body);
+            self.instructions().local_get(i);
             let j = self.local_index_raw(operand_stack_height, ty);
-            Instruction::LocalSet(j).encode(&mut self.body);
+            self.instructions().local_set(j);
             operand_stack_height.push(ty);
         }
         let n = self.func.basic_blocks.len();
         // We don't yet support the explicit `return` instruction, so we know that the forward pass
         // exited from the last basic block with an implicit return; so, when we enter the state
         // machine for the backward pass, we know to enter at that last basic block.
-        Instruction::I32Const((n - 1).try_into().unwrap()).encode(&mut self.body);
+        self.instructions().i32_const((n - 1).try_into().unwrap());
         let blockty = wasm_encoder::BlockType::FunctionType(TYPE_DISPATCH);
-        Instruction::Loop(blockty).encode(&mut self.body);
+        self.instructions().loop_(blockty);
         for _ in 0..n {
-            Instruction::Block(blockty).encode(&mut self.body);
+            self.instructions().block(blockty);
         }
         // We insert one last `block` to give us a branch target for the error case where we somehow
         // got an invalid basic block index.
-        Instruction::Block(blockty).encode(&mut self.body);
+        self.instructions().block(blockty);
         // We'll put the reversed basic blocks of the backward pass in reverse order compared to the
         // original function, because the first basic block is the entrypoint to the original
         // function, so in the backward pass it becomes the sole exit point; by putting it at the
         // end, we can just do an implicit return instead of an explicit `return` instruction.
         let table: Vec<u32> = (1..=n.try_into().unwrap()).rev().collect();
-        Instruction::BrTable(Cow::from(&table), 0).encode(&mut self.body);
-        Instruction::End.encode(&mut self.body);
+        self.instructions().br_table(table, 0).end();
         // If we got an invalid basic block index, just trap immediately.
-        Instruction::Unreachable.encode(&mut self.body);
+        self.instructions().unreachable();
         for i in (1..n).rev() {
-            Instruction::End.encode(&mut self.body);
+            self.instructions().end();
             self.basic_block(i);
-            Instruction::Call(FUNC_TAPE_I32_BWD).encode(&mut self.body); // Load basic block index.
-            Instruction::Br(i.try_into().unwrap()).encode(&mut self.body); // Branch to the `loop`.
+            self.instructions()
+                .call(FUNC_TAPE_I32_BWD) // Load basic block index.
+                .br(i.try_into().unwrap()); // Branch to the `loop`.
         }
-        Instruction::End.encode(&mut self.body);
-        Instruction::End.encode(&mut self.body);
+        self.instructions().end().end();
         // First basic block goes outside the whole `loop`/`block` structure, to easily allow the
         // implicit `return`.
         self.basic_block(0);
-        Instruction::End.encode(&mut self.body);
+        self.instructions().end();
         self.body
     }
 
@@ -812,25 +814,25 @@ impl ReverseReverseFunction {
         for &ty in self.func.stacks[stack_mid..stack_end].iter().rev() {
             self.operand_stack_height.pop(ty);
             let i = self.local_index(ty);
-            reverse_encode(&mut self.body, &Instruction::LocalSet(i));
+            reverse_encode(&mut self.body, |insn| insn.local_set(i));
             // TODO: Only set stack locals to zero when they won't be overwritten later anyway.
             match ty {
                 wasm_encoder::ValType::I32 => {
-                    reverse_encode(&mut self.body, &Instruction::I32Const(0));
+                    reverse_encode(&mut self.body, |insn| insn.i32_const(0));
                 }
                 wasm_encoder::ValType::I64 => {
-                    reverse_encode(&mut self.body, &Instruction::I64Const(0));
+                    reverse_encode(&mut self.body, |insn| insn.i64_const(0));
                 }
                 wasm_encoder::ValType::F32 => {
-                    reverse_encode(&mut self.body, &Instruction::F32Const(0.));
+                    reverse_encode(&mut self.body, |insn| insn.f32_const(0.));
                 }
                 wasm_encoder::ValType::F64 => {
-                    reverse_encode(&mut self.body, &Instruction::F64Const(0.));
+                    reverse_encode(&mut self.body, |insn| insn.f64_const(0.));
                 }
                 wasm_encoder::ValType::V128 => unimplemented!(),
                 wasm_encoder::ValType::Ref(_) => unimplemented!(),
             }
-            reverse_encode(&mut self.body, &Instruction::LocalGet(i));
+            reverse_encode(&mut self.body, |insn| insn.local_get(i));
         }
         self.body[n..].reverse();
         self.body
@@ -842,10 +844,14 @@ impl ReverseReverseFunction {
         let n = self.body.len();
         for &ty in self.func.stacks[stack_start..stack_mid].iter().rev() {
             let i = self.local_index(ty);
-            reverse_encode(&mut self.body, &Instruction::LocalSet(i));
+            reverse_encode(&mut self.body, |insn| insn.local_set(i));
             self.operand_stack_height.push(ty);
         }
         self.body[n..].reverse();
+    }
+
+    fn instructions(&mut self) -> InstructionSink {
+        InstructionSink::new(&mut self.body)
     }
 
     fn local_index(&self, ty: wasm_encoder::ValType) -> u32 {
@@ -876,8 +882,11 @@ impl ReverseReverseFunction {
     }
 }
 
-fn reverse_encode(sink: &mut Vec<u8>, instruction: &Instruction) {
+fn reverse_encode<F>(sink: &mut Vec<u8>, f: F)
+where
+    for<'a, 'b> F: FnOnce(&'a mut InstructionSink<'b>) -> &'a mut InstructionSink<'b>,
+{
     let n = sink.len();
-    instruction.encode(sink);
+    f(&mut InstructionSink::new(sink));
     sink[n..].reverse();
 }
