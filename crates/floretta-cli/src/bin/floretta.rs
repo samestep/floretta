@@ -87,7 +87,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_wat(wasm: &[u8], mut writer: impl WriteColor) -> anyhow::Result<()> {
-    wasmprinter::Config::new().print(wasm, &mut wasmprinter::PrintTermcolor(&mut writer))?;
+fn print_wat(wasm: &[u8], writer: impl WriteColor) -> anyhow::Result<()> {
+    wasmprinter::Config::new().print(wasm, &mut wasmprinter::PrintTermcolor(writer))?;
     Ok(())
 }
