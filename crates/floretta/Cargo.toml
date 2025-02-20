@@ -7,17 +7,17 @@ repository.workspace = true
 edition.workspace = true
 
 [dependencies]
-regex.workspace = true
-thiserror.workspace = true
-wasm-encoder.workspace = true
-wasmparser.workspace = true
+regex = { workspace = true }
+thiserror = { workspace = true }
+wasm-encoder = { workspace = true }
+wasmparser = { workspace = true }
 
 [features]
 default = ["names"]
 names = []
 
 [dev-dependencies]
-goldenfile.workspace = true
-wasmprinter.workspace = true
-wasmtime.workspace = true
-wat.workspace = true
+goldenfile = { workspace = true }
+wasmprinter = { workspace = true }
+wasmtime = { workspace = true }
+wat = { workspace = true }
