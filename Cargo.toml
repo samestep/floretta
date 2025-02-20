@@ -15,15 +15,15 @@ floretta = { path = "crates/floretta", version = "=0.3.0", default-features = fa
 goldenfile = "1.8"
 regex = "1"
 thiserror = "2"
-wasm-encoder = { version = "0.225", default-features = false, features = [
+wasm-encoder = { version = "0.226", default-features = false, features = [
   "wasmparser",
 ] }
-wasmparser = { version = "0.225", default-features = false, features = [
+wasmparser = { version = "0.226", default-features = false, features = [
   "features",
   "validate",
 ] }
-wasmprinter = "0.225"
-wasmtime = "29"
+wasmprinter = "0.226"
+wasmtime = "30"
 wat = "1"
 
 # https://github.com/johnthagen/min-sized-rust
