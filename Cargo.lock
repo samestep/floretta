@@ -533,7 +533,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "floretta"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "goldenfile",
  "regex",
@@ -547,7 +547,7 @@ dependencies = [
 
 [[package]]
 name = "floretta-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -559,7 +559,7 @@ dependencies = [
 
 [[package]]
 name = "floretta-wasm"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "floretta",
 ]
