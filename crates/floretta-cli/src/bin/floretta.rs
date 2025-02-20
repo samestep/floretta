@@ -11,8 +11,8 @@ use floretta::Autodiff;
 /// Apply reverse-mode automatic differentiation to a WebAssembly module.
 #[derive(Debug, Parser)]
 struct Cli {
-    /// Input file path; if not provided, will read from stdin.
-    input: Option<PathBuf>,
+    /// Input file path, or `-` to read from stdin.
+    input: PathBuf,
 
     /// Do not validate the input WebAssembly module.
     #[clap(long)]
@@ -37,13 +37,12 @@ struct Cli {
 
 pub fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
-    let before = match args.input {
-        Some(path) => wat::parse_file(path)?,
-        None => {
-            let mut stdin = Vec::new();
-            io::stdin().read_to_end(&mut stdin)?;
-            wat::parse_bytes(&stdin)?.into_owned()
-        }
+    let before = if args.input.to_str() == Some("-") {
+        let mut stdin = Vec::new();
+        io::stdin().read_to_end(&mut stdin)?;
+        wat::parse_bytes(&stdin)?.into_owned()
+    } else {
+        wat::parse_file(args.input)?
     };
     let mut ad = if args.no_validate {
         Autodiff::no_validate()
