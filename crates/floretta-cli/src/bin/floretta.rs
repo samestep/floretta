@@ -7,6 +7,7 @@ use std::{
 use anyhow::bail;
 use clap::Parser;
 use floretta::Autodiff;
+use termcolor::{ColorChoice, NoColor, StandardStream, WriteColor};
 
 /// Apply reverse-mode automatic differentiation to a WebAssembly module.
 #[derive(Debug, Parser)]
@@ -35,7 +36,7 @@ struct Cli {
     wat: bool,
 }
 
-pub fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
     let before = if args.input.to_str() == Some("-") {
         let mut stdin = Vec::new();
@@ -57,10 +58,19 @@ pub fn main() -> anyhow::Result<()> {
     }
     let after = ad.transform(&before)?;
     if args.wat {
-        let string = wasmprinter::print_bytes(after)?;
         match args.output {
-            Some(path) => fs::write(path, string)?,
-            None => print!("{}", string),
+            Some(path) => {
+                let writer = NoColor::new(io::BufWriter::new(fs::File::create(path)?));
+                print_wat(&after, writer)?;
+            }
+            None => {
+                let color = if io::stdout().is_terminal() {
+                    ColorChoice::Auto
+                } else {
+                    ColorChoice::Never
+                };
+                print_wat(&after, StandardStream::stdout(color))?;
+            }
         }
     } else {
         match args.output {
@@ -74,5 +84,10 @@ pub fn main() -> anyhow::Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+fn print_wat(wasm: &[u8], mut writer: impl WriteColor) -> anyhow::Result<()> {
+    wasmprinter::Config::new().print(wasm, &mut wasmprinter::PrintTermcolor(&mut writer))?;
     Ok(())
 }

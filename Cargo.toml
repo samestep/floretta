@@ -14,6 +14,7 @@ clap = { version = "4", features = ["derive"] }
 floretta = { path = "crates/floretta", version = "=0.3.0", default-features = false }
 goldenfile = "1.8"
 regex = "1"
+termcolor = "1"
 thiserror = "2"
 wasm-encoder = { version = "0.226", default-features = false, features = [
   "wasmparser",
