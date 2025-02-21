@@ -5,9 +5,14 @@
 
 import argparse
 import subprocess
+import sys
 from pathlib import Path
 
 import tomlkit
+
+
+def run(cmd: list[str]) -> None:
+    subprocess.run(cmd, check=True)
 
 
 def update_version(version: str) -> None:
@@ -26,10 +31,11 @@ def main() -> None:
     version = args.version.removeprefix("v")
     update_version(version)
     if subprocess.run(["git", "status", "--porcelain"], capture_output=True).stdout:
-        raise Exception("won't create a release with uncommitted changes")
-    subprocess.run(["git", "commit", "-m", f"Release v{version}"])
-    subprocess.run(["git", "push"])
-    subprocess.run(["gh", "release", "create", f"v{version}"])
+        print("commit or stash before releasing", file=sys.stderr)
+        sys.exit(1)
+    run(["git", "commit", "-m", f"Release v{version}"])
+    run(["git", "push"])
+    run(["gh", "release", "create", f"v{version}"])
 
 
 if __name__ == "__main__":
