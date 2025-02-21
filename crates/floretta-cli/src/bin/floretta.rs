@@ -48,18 +48,19 @@ struct Cli {
 
 fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
-    let before = if args.input.to_str() == Some("-") {
+    let raw = if args.input.to_str() == Some("-") {
         let mut stdin = Vec::new();
         io::stdin().read_to_end(&mut stdin)?;
-        match wat::parse_bytes(&stdin)? {
-            Cow::Borrowed(bytes) => {
-                assert_eq!((bytes.as_ptr(), bytes.len()), (stdin.as_ptr(), stdin.len()));
-                stdin
-            }
-            Cow::Owned(bytes) => bytes,
-        }
+        stdin
     } else {
-        wat::parse_file(args.input)?
+        fs::read(args.input)?
+    };
+    let before = match wat::parse_bytes(&raw)? {
+        Cow::Borrowed(bytes) => {
+            assert_eq!((bytes.as_ptr(), bytes.len()), (raw.as_ptr(), raw.len()));
+            raw
+        }
+        Cow::Owned(bytes) => bytes,
     };
     let after = match (args.forward, args.reverse) {
         (true, true) => bail!("can't choose both forward and reverse mode at once"),
