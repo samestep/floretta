@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     fs,
     io::{self, IsTerminal, Read, Write},
     path::PathBuf,
@@ -7,6 +8,7 @@ use std::{
 use anyhow::bail;
 use clap::Parser;
 use floretta::{Forward, Reverse};
+use itertools::Itertools;
 use termcolor::{ColorChoice, NoColor, StandardStream, WriteColor};
 
 /// Apply automatic differentiation to a WebAssembly module.
@@ -49,7 +51,13 @@ fn main() -> anyhow::Result<()> {
     let before = if args.input.to_str() == Some("-") {
         let mut stdin = Vec::new();
         io::stdin().read_to_end(&mut stdin)?;
-        wat::parse_bytes(&stdin)?.into_owned()
+        match wat::parse_bytes(&stdin)? {
+            Cow::Borrowed(bytes) => {
+                assert_eq!((bytes.as_ptr(), bytes.len()), (stdin.as_ptr(), stdin.len()));
+                stdin
+            }
+            Cow::Owned(bytes) => bytes,
+        }
     } else {
         wat::parse_file(args.input)?
     };
@@ -78,8 +86,9 @@ fn main() -> anyhow::Result<()> {
             if !args.no_names {
                 ad.names();
             }
-            for pair in args.name.chunks(2) {
-                ad.export(&pair[0], &pair[1]);
+            for pair in args.name.into_iter().chunks(2).into_iter() {
+                let (forward, backward) = pair.collect_tuple().unwrap();
+                ad.export(forward, backward);
             }
             ad.transform(&before)?
         }

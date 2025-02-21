@@ -13,6 +13,7 @@ name = "floretta"
 anyhow = { workspace = true }
 clap = { workspace = true }
 floretta = { workspace = true, default-features = true }
+itertools = { workspace = true }
 termcolor = { workspace = true }
 wasmprinter = { workspace = true }
 wat = { workspace = true }

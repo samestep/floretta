@@ -13,6 +13,7 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 floretta = { path = "crates/floretta", version = "=0.4.0", default-features = false }
 goldenfile = "1.8"
+itertools = "0.14"
 regex = "1"
 termcolor = "1"
 thiserror = "2"
