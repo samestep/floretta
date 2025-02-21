@@ -19,15 +19,27 @@ cd floretta
 
 ## Testing
 
-Use this command to run all the tests:
+To run all the tests:
 
 ```sh
 cargo test
 ```
 
+## Wasm
+
+To compile Floretta itself into a Wasm binary:
+
+```sh
+.github/wasm.py
+```
+
 ## Release
 
-To make a new release, just run the `.github/release.py` script.
+To make a new release:
+
+```sh
+.github/release.py $FLORETTA_VERSION
+```
 
 [github cli]: https://cli.github.com/
 [rust]: https://www.rust-lang.org/tools/install
