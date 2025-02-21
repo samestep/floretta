@@ -27,17 +27,8 @@ cargo test
 
 ## Release
 
-To make a new release, first push a commit updating the version number:
-
-```sh
-uv run .github/version.py $FLORETTA_VERSION
-git commit -m "Release v$FLORETTA_VERSION"
-git push
-```
-
-Then create a [new GitHub release][], choosing the option to **Create new tag: `v$FLORETTA_VERSION` on publish**, and using the same `v$FLORETTA_VERSION` as the release title.
+To make a new release, just run the `.github/release.py` script.
 
 [github cli]: https://cli.github.com/
-[new github release]: https://github.com/samestep/floretta/releases/new
 [rust]: https://www.rust-lang.org/tools/install
 [uv]: https://docs.astral.sh/uv
