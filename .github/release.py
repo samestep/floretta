@@ -25,8 +25,8 @@ def main() -> None:
     args = parser.parse_args()
     version = args.version.removeprefix("v")
     update_version(version)
-    if subprocess.run(["git", "status", "--porcelain"], capture_output=True):
-        raise Exception("git status is not clean")
+    if subprocess.run(["git", "status", "--porcelain"], capture_output=True).stdout:
+        raise Exception("won't create a release with uncommitted changes")
     subprocess.run(["git", "commit", "-m", f"Release v{version}"])
     subprocess.run(["git", "push"])
     subprocess.run(["gh", "release", "create", f"v{version}"])
