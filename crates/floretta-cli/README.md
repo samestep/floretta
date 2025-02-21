@@ -14,7 +14,7 @@ Use the `--help` flag to see all available CLI arguments:
 floretta --help
 ```
 
-For example, if you create a file called `square.wat` with these contents:
+Here are some usage examples, assuming you have [Node.js][] installed. First, create a file called `square.wat` with these contents:
 
 ```wat
 (module
@@ -22,13 +22,45 @@ For example, if you create a file called `square.wat` with these contents:
     (f64.mul (local.get 0) (local.get 0))))
 ```
 
-Then you can use Floretta to take the backward pass of the `"square"` function and name it `"backprop"`:
+## Forward mode
+
+You can use Floretta to replace the `"square"` function approximating real numbers with one approximating the [dual numbers][]:
 
 ```sh
-floretta square.wat --export square backprop --output gradient.wasm
+floretta --forward square.wat --output dual.wasm
 ```
 
-Finally, if you have a Wasm engine, you can use it to compute a gradient with the emitted Wasm binary by running the forward pass followed by the backward pass. For instance, if you have [Node.js][] installed, you can create a file called `gradient.mjs` with these contents:
+Then if you have a Wasm engine, you can use it to compute the der with the emitted Wasm binary by running the augmented function with a value of 1 for the dual part. For instance, you can create a file called `dual.mjs` with these contents:
+
+```js
+import fs from "node:fs/promises";
+const wasm = await fs.readFile("dual.wasm");
+const module = await WebAssembly.instantiate(wasm);
+const { square } = module.instance.exports;
+console.log(square(3, 1));
+```
+
+And run it like this:
+
+```sh
+node dual.mjs
+```
+
+Expected output:
+
+```
+[ 9, 6 ]
+```
+
+## Reverse mode
+
+You can use Floretta to take the backward pass of the `"square"` function and name it `"backprop"`:
+
+```sh
+floretta --reverse square.wat --export square backprop --output gradient.wasm
+```
+
+Then if you have a Wasm engine, you can use it on the emitted Wasm binary to compute a gradient by running the forward pass followed by the backward pass. For instance, you can create a file called `gradient.mjs` with these contents:
 
 ```js
 import fs from "node:fs/promises";
@@ -54,6 +86,7 @@ Expected output:
 
 [`floretta`]: https://crates.io/crates/floretta
 [automatic differentiation]: https://en.wikipedia.org/wiki/Automatic_differentiation
+[dual numbers]: https://en.wikipedia.org/wiki/Dual_number
 [floretta]: https://github.com/samestep/floretta
 [node.js]: https://nodejs.org
 [webassembly]: https://webassembly.org/

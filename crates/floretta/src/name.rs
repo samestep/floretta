@@ -16,7 +16,7 @@ use crate::{
         TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD, TYPE_TAPE_I32,
         TYPE_TAPE_I32_BWD,
     },
-    transform::StackHeight,
+    reverse::StackHeight,
 };
 
 struct NameNumbers {

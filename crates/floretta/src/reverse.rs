@@ -1,19 +1,20 @@
 use std::{collections::HashMap, iter};
 
 use wasm_encoder::{
-    reencode::{Reencode, RoundtripReencoder},
     CodeSection, Encode, ExportKind, ExportSection, Function, FunctionSection, GlobalSection,
     InstructionSink, MemorySection, Module, TypeSection,
+    reencode::{Reencode, RoundtripReencoder},
 };
 use wasmparser::{FunctionBody, Operator, Parser, Payload, Validator, WasmFeatures};
 
 use crate::{
+    NoValidate, Validate,
     helper::{
-        helpers, FUNC_F32_DIV_BWD, FUNC_F32_DIV_FWD, FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD,
-        FUNC_F64_DIV_BWD, FUNC_F64_DIV_FWD, FUNC_F64_MUL_BWD, FUNC_F64_MUL_FWD, FUNC_TAPE_I32,
-        FUNC_TAPE_I32_BWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES,
-        TYPE_DISPATCH, TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD,
-        TYPE_TAPE_I32, TYPE_TAPE_I32_BWD,
+        FUNC_F32_DIV_BWD, FUNC_F32_DIV_FWD, FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F64_DIV_BWD,
+        FUNC_F64_DIV_FWD, FUNC_F64_MUL_BWD, FUNC_F64_MUL_FWD, FUNC_TAPE_I32, FUNC_TAPE_I32_BWD,
+        OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES, TYPE_DISPATCH,
+        TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD, TYPE_TAPE_I32,
+        TYPE_TAPE_I32_BWD, helpers,
     },
     util::u32_to_usize,
     validate::{FunctionValidator, ModuleValidator},
@@ -29,18 +30,14 @@ pub struct Config {
     pub names: bool,
 }
 
-pub trait Runner {
+pub trait ReverseTransform {
     fn transform(&self, config: &Config, wasm_module: &[u8]) -> crate::Result<Vec<u8>>;
 }
 
-// We make `Runner` a `trait` instead of just an `enum`, to facilitate dead code elimination when
-// validation is not needed.
+// We make `ReverseTransform` a `trait` instead of just an `enum`, to facilitate dead code elimination
+// when validation is not needed.
 
-pub struct Validate;
-
-pub struct NoValidate;
-
-impl Runner for Validate {
+impl ReverseTransform for Validate {
     fn transform(&self, config: &Config, wasm_module: &[u8]) -> crate::Result<Vec<u8>> {
         let features = WasmFeatures::empty() | WasmFeatures::MULTI_VALUE | WasmFeatures::FLOATS;
         let validator = Validator::new_with_features(features);
@@ -48,7 +45,7 @@ impl Runner for Validate {
     }
 }
 
-impl Runner for NoValidate {
+impl ReverseTransform for NoValidate {
     fn transform(&self, config: &Config, wasm_module: &[u8]) -> crate::Result<Vec<u8>> {
         transform((), config, wasm_module)
     }
@@ -333,7 +330,6 @@ fn function(
     for i in (0..num_params).rev() {
         bwd.instructions(|insn| insn.local_get(num_results + i));
     }
-    let mut operators_reader = body.get_operators_reader()?;
     let mut func = Func {
         num_results,
         locals: &locals,
@@ -347,6 +343,7 @@ fn function(
         tmp_f64,
     };
     validator.check_operand_stack_height(0);
+    let mut operators_reader = body.get_operators_reader()?;
     while !operators_reader.eof() {
         let (op, offset) = operators_reader.read_with_offset()?;
         validator.op(offset, &op)?;
@@ -923,4 +920,191 @@ where
     let n = sink.len();
     f(&mut InstructionSink::new(sink));
     sink[n..].reverse();
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use goldenfile::Mint;
+    use wasmtime::{Engine, Instance, Module, Store};
+
+    #[test]
+    #[cfg(feature = "names")]
+    fn test_names() {
+        let input = wat::parse_str(include_str!("wat/names.wat")).unwrap();
+        let mut ad = crate::Reverse::new();
+        ad.names();
+        let output = wasmprinter::print_bytes(ad.transform(&input).unwrap()).unwrap();
+        let mut mint = Mint::new("src/reverse");
+        let mut file = mint.new_goldenfile("names.wat").unwrap();
+        file.write_all(output.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn test_square() {
+        let input = wat::parse_str(include_str!("wat/square.wat")).unwrap();
+
+        let mut ad = crate::Reverse::new();
+        ad.export("square", "backprop");
+        let output = ad.transform(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let square = instance
+            .get_typed_func::<f64, f64>(&mut store, "square")
+            .unwrap();
+        let backprop = instance
+            .get_typed_func::<f64, f64>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(square.call(&mut store, 3.).unwrap(), 9.);
+        assert_eq!(backprop.call(&mut store, 1.).unwrap(), 6.);
+    }
+
+    #[test]
+    fn test_tuple() {
+        let input = wat::parse_str(include_str!("wat/tuple.wat")).unwrap();
+
+        let mut ad = crate::Reverse::new();
+        ad.export("tuple", "backprop");
+        let output = ad.transform(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let fwd = instance
+            .get_typed_func::<(i32, f64, i64, f32), (f32, i32, f64, i64)>(&mut store, "tuple")
+            .unwrap();
+        let bwd = instance
+            .get_typed_func::<(f32, i32, f64, i64), (i32, f64, i64, f32)>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(
+            fwd.call(&mut store, (1, 2., 3, 4.)).unwrap(),
+            (4., 1, 2., 3),
+        );
+        assert_eq!(
+            bwd.call(&mut store, (5., 6, 7., 8)).unwrap(),
+            (0, 7., 0, 5.),
+        );
+    }
+
+    #[test]
+    fn test_loop() {
+        let input = wat::parse_str(include_str!("wat/loop.wat")).unwrap();
+
+        let mut ad = crate::Reverse::new();
+        ad.export("loop", "backprop");
+        let output = ad.transform(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let fwd = instance
+            .get_typed_func::<f64, f64>(&mut store, "loop")
+            .unwrap();
+        let bwd = instance
+            .get_typed_func::<f64, f64>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(fwd.call(&mut store, 1.1).unwrap(), -0.99);
+        assert_eq!(bwd.call(&mut store, 1.).unwrap(), 0.20000000000000018);
+    }
+
+    #[test]
+    fn test_f32_mul() {
+        let input = wat::parse_str(include_str!("wat/f32_mul.wat")).unwrap();
+
+        let mut ad = crate::Reverse::new();
+        ad.export("mul", "backprop");
+        let output = ad.transform(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let fwd = instance
+            .get_typed_func::<(f32, f32), f32>(&mut store, "mul")
+            .unwrap();
+        let bwd = instance
+            .get_typed_func::<f32, (f32, f32)>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(fwd.call(&mut store, (3., 2.)).unwrap(), 6.);
+        assert_eq!(bwd.call(&mut store, 1.).unwrap(), (2., 3.));
+    }
+
+    #[test]
+    fn test_f32_div() {
+        let input = wat::parse_str(include_str!("wat/f32_div.wat")).unwrap();
+
+        let mut ad = crate::Reverse::new();
+        ad.export("div", "backprop");
+        let output = ad.transform(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let fwd = instance
+            .get_typed_func::<(f32, f32), f32>(&mut store, "div")
+            .unwrap();
+        let bwd = instance
+            .get_typed_func::<f32, (f32, f32)>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(fwd.call(&mut store, (3., 2.)).unwrap(), 1.5);
+        assert_eq!(bwd.call(&mut store, 1.).unwrap(), (0.5, -0.75));
+    }
+
+    #[test]
+    fn test_f64_mul() {
+        let input = wat::parse_str(include_str!("wat/f64_mul.wat")).unwrap();
+
+        let mut ad = crate::Reverse::new();
+        ad.export("mul", "backprop");
+        let output = ad.transform(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let fwd = instance
+            .get_typed_func::<(f64, f64), f64>(&mut store, "mul")
+            .unwrap();
+        let bwd = instance
+            .get_typed_func::<f64, (f64, f64)>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(fwd.call(&mut store, (3., 2.)).unwrap(), 6.);
+        assert_eq!(bwd.call(&mut store, 1.).unwrap(), (2., 3.));
+    }
+
+    #[test]
+    fn test_f64_div() {
+        let input = wat::parse_str(include_str!("wat/f64_div.wat")).unwrap();
+
+        let mut ad = crate::Reverse::new();
+        ad.export("div", "backprop");
+        let output = ad.transform(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let fwd = instance
+            .get_typed_func::<(f64, f64), f64>(&mut store, "div")
+            .unwrap();
+        let bwd = instance
+            .get_typed_func::<f64, (f64, f64)>(&mut store, "backprop")
+            .unwrap();
+
+        assert_eq!(fwd.call(&mut store, (3., 2.)).unwrap(), 1.5);
+        assert_eq!(bwd.call(&mut store, 1.).unwrap(), (0.5, -0.75));
+    }
 }

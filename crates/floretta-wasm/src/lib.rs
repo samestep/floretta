@@ -1,4 +1,9 @@
 #[unsafe(no_mangle)]
-fn autodiff(wasm_module: &[u8]) -> Result<Vec<u8>, floretta::Error> {
-    floretta::Autodiff::no_validate().transform(wasm_module)
+fn forward(wasm: &[u8]) -> Result<Vec<u8>, floretta::Error> {
+    floretta::Forward::no_validate().transform(wasm)
+}
+
+#[unsafe(no_mangle)]
+fn reverse(wasm: &[u8]) -> Result<Vec<u8>, floretta::Error> {
+    floretta::Reverse::no_validate().transform(wasm)
 }

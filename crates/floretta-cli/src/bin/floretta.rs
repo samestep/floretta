@@ -6,14 +6,22 @@ use std::{
 
 use anyhow::bail;
 use clap::Parser;
-use floretta::Autodiff;
+use floretta::{Forward, Reverse};
 use termcolor::{ColorChoice, NoColor, StandardStream, WriteColor};
 
-/// Apply reverse-mode automatic differentiation to a WebAssembly module.
+/// Apply automatic differentiation to a WebAssembly module.
 #[derive(Debug, Parser)]
 struct Cli {
     /// Input file path, or `-` to read from stdin.
     input: PathBuf,
+
+    /// Forward mode.
+    #[clap(short, long)]
+    forward: bool,
+
+    /// Reverse mode [default].
+    #[clap(short, long)]
+    reverse: bool,
 
     /// Do not validate the input WebAssembly module.
     #[clap(long)]
@@ -23,8 +31,8 @@ struct Cli {
     #[clap(long)]
     no_names: bool,
 
-    /// Export the backward pass of a function that is already exported.
-    #[clap(long = "export", num_args = 2)]
+    /// In reverse mode, export the backward pass of a function that is already exported.
+    #[clap(short = 'e', long = "export", num_args = 2)]
     name: Vec<String>,
 
     /// Output file path; if not provided, will write to stdout.
@@ -45,18 +53,37 @@ fn main() -> anyhow::Result<()> {
     } else {
         wat::parse_file(args.input)?
     };
-    let mut ad = if args.no_validate {
-        Autodiff::no_validate()
-    } else {
-        Autodiff::new()
+    let after = match (args.forward, args.reverse) {
+        (true, true) => bail!("can't choose both forward and reverse mode at once"),
+        (true, false) => {
+            let ad = if args.no_validate {
+                Forward::no_validate()
+            } else {
+                Forward::new()
+            };
+            if !args.no_names {
+                bail!("the name section is not yet supported in forward mode");
+            }
+            if !args.name.is_empty() {
+                bail!("can't use `--export` in forward mode");
+            }
+            ad.transform(&before)?
+        }
+        (false, _) => {
+            let mut ad = if args.no_validate {
+                Reverse::no_validate()
+            } else {
+                Reverse::new()
+            };
+            if !args.no_names {
+                ad.names();
+            }
+            for pair in args.name.chunks(2) {
+                ad.export(&pair[0], &pair[1]);
+            }
+            ad.transform(&before)?
+        }
     };
-    if !args.no_names {
-        ad.names();
-    }
-    for pair in args.name.chunks(2) {
-        ad.export(&pair[0], &pair[1]);
-    }
-    let after = ad.transform(&before)?;
     if args.wat {
         match args.output {
             Some(path) => {

@@ -39,7 +39,7 @@ Then you can use Floretta to take the backward pass of the `"square"` function a
 floretta square.wat --export square backprop --output gradient.wasm
 ```
 
-Finally, if you have a Wasm engine, you can use it to compute a gradient with the emitted Wasm binary by running the forward pass followed by the backward pass. For instance, if you have [Node.js][] installed, you can create a file called `gradient.mjs` with these contents:
+Finally, if you have a Wasm engine, you can use it on the emitted Wasm binary to compute a gradient by running the forward pass followed by the backward pass. For instance, if you have [Node.js][] installed, you can create a file called `gradient.mjs` with these contents:
 
 ```js
 import fs from "node:fs/promises";
