@@ -22,7 +22,7 @@ struct Cli {
     #[clap(short, long)]
     forward: bool,
 
-    /// Reverse mode [default].
+    /// Reverse mode.
     #[clap(short, long)]
     reverse: bool,
 
@@ -64,7 +64,8 @@ fn main() -> anyhow::Result<()> {
         Cow::Owned(bytes) => bytes,
     };
     let after = match (args.forward, args.reverse) {
-        (true, true) => bail!("can't choose both forward and reverse mode at once"),
+        (false, false) => bail!("must select either `--forward` mode or `--reverse` mode"),
+        (true, true) => bail!("can't select both forward mode and reverse mode at once"),
         (true, false) => {
             let ad = if args.no_validate {
                 Forward::no_validate()
@@ -79,7 +80,7 @@ fn main() -> anyhow::Result<()> {
             }
             ad.transform(&before)?
         }
-        (false, _) => {
+        (false, true) => {
             let mut ad = if args.no_validate {
                 Reverse::no_validate()
             } else {
