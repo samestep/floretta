@@ -46,14 +46,14 @@ impl Autodiff {
     }
 
     /// Export the backward pass of a function that is already exported.
-    pub fn export(&mut self, function: impl Into<String>, gradient: impl Into<String>) {
-        self.config.exports.insert(function.into(), gradient.into());
+    pub fn export(&mut self, forward: impl Into<String>, backward: impl Into<String>) {
+        self.config.exports.insert(forward.into(), backward.into());
     }
 
     /// Transform a WebAssembly module using this configuration.
-    pub fn transform(&self, wasm_module: &[u8]) -> Result<Vec<u8>, Error> {
+    pub fn transform(&self, wasm: &[u8]) -> Result<Vec<u8>, Error> {
         self.runner
-            .transform(&self.config, wasm_module)
+            .transform(&self.config, wasm)
             .map_err(|inner| Error { inner })
     }
 }
