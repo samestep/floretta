@@ -5,7 +5,6 @@
 
 import argparse
 import subprocess
-import sys
 from pathlib import Path
 
 import tomlkit
@@ -15,13 +14,12 @@ def run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True)
 
 
-def update_version(version: str) -> None:
-    p = Path("Cargo.toml")
-    cargo_toml = tomlkit.parse(p.read_text())
+def update_version(path: Path, version: str) -> None:
+    cargo_toml = tomlkit.parse(path.read_text())
     workspace = cargo_toml["workspace"]
     workspace["package"]["version"] = version
     workspace["dependencies"]["floretta"]["version"] = f"={version}"
-    p.write_text(tomlkit.dumps(cargo_toml))
+    path.write_text(tomlkit.dumps(cargo_toml))
 
 
 def main() -> None:
@@ -29,10 +27,9 @@ def main() -> None:
     parser.add_argument("version")
     args = parser.parse_args()
     version = args.version.removeprefix("v")
-    update_version(version)
-    if subprocess.run(["git", "status", "--porcelain"], capture_output=True).stdout:
-        print("commit or stash before releasing", file=sys.stderr)
-        sys.exit(1)
+    path = Path("Cargo.toml")
+    update_version(path, version)
+    run(["git", "add", path])
     run(["git", "commit", "-m", f"Release v{version}"])
     run(["git", "push"])
     run(["gh", "release", "create", f"v{version}", "--title", f"v{version}"])
