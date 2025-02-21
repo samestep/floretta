@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: .github/wasm.py >> $GITHUB_STEP_SUMMARY
+      - run: .github/wasm.py -o $GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
         with:
           name: wasm

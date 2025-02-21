@@ -14,6 +14,7 @@ def run(cmd: list[str]) -> None:
 
 def compile() -> str:
     run(["rustup", "install", "nightly"])
+    run(["rustup", "component", "add", "rust-src"])
     run(
         [
             "cargo",
