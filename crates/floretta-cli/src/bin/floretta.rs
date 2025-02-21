@@ -13,6 +13,7 @@ use termcolor::{ColorChoice, NoColor, StandardStream, WriteColor};
 
 /// Apply automatic differentiation to a WebAssembly module.
 #[derive(Debug, Parser)]
+#[command(name = "floretta", version)]
 struct Cli {
     /// Input file path, or `-` to read from stdin.
     input: PathBuf,
