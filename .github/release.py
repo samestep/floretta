@@ -35,7 +35,7 @@ def main() -> None:
         sys.exit(1)
     run(["git", "commit", "-m", f"Release v{version}"])
     run(["git", "push"])
-    run(["gh", "release", "create", f"v{version}"])
+    run(["gh", "release", "create", f"v{version}", "--title", f"v{version}"])
 
 
 if __name__ == "__main__":
