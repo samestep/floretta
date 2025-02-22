@@ -1,8 +1,6 @@
-use crate::{
-    ErrorImpl, NoValidate, Validate,
-    forward::{self, ForwardTransform},
-    reverse::{self, ReverseTransform},
-};
+use std::collections::{HashMap, hash_map::Entry};
+
+use crate::{ErrorImpl, NoValidate, Transform, Validate};
 
 /// An error that occurred during code transformation.
 #[derive(Debug, thiserror::Error)]
@@ -11,149 +9,79 @@ pub struct Error {
     inner: ErrorImpl,
 }
 
-/// WebAssembly code transformation to perform forward mode automatic differentiation.
-///
-/// Use [`Forward::new`] to create an empty config, then use [`Forward::transform`] to process a
-/// Wasm module.
-///
-/// For example, if you have [`wat`][] and [Wasmtime][] installed:
-///
-/// ```
-/// use wasmtime::{Engine, Instance, Module, Store};
-///
-/// let input = wat::parse_str(r#"
-/// (module
-///   (func (export "square") (param f64) (result f64)
-///     (f64.mul (local.get 0) (local.get 0))))
-/// "#).unwrap();
-///
-/// let ad = floretta::Forward::new();
-/// let output = ad.transform(&input).unwrap();
-///
-/// let engine = Engine::default();
-/// let mut store = Store::new(&engine, ());
-/// let module = Module::new(&engine, &output).unwrap();
-/// let instance = Instance::new(&mut store, &module, &[]).unwrap();
-/// let square = instance.get_typed_func::<(f64, f64), (f64, f64)>(&mut store, "square").unwrap();
-///
-/// assert_eq!(square.call(&mut store, (3., 1.)).unwrap(), (9., 6.));
-/// ```
-///
-/// [`wat`]: https://crates.io/crates/wat
-/// [wasmtime]: https://crates.io/crates/wasmtime
-pub struct Forward {
-    runner: Box<dyn ForwardTransform>,
-    config: forward::Config,
+/// WebAssembly code transformations for automatic differentiation.
+pub struct Autodiff {
+    /// Name is a bit of a misnomer; this is just dynamic dispatch to choose whether or not to
+    /// validate at the very beginning, so when doing the actual code transformation, validation
+    /// dispatch is static.
+    transform: Box<dyn Transform>,
+
+    /// Exported functions whose backward passes should also be exported.
+    pub(crate) exports: HashMap<String, String>,
+
+    /// Whether to include the names section in the output Wasm.
+    #[cfg(feature = "names")]
+    pub(crate) names: bool,
 }
 
-impl Default for Forward {
+impl Default for Autodiff {
     fn default() -> Self {
-        Self {
-            runner: Box::new(Validate),
-            config: Default::default(),
-        }
+        Self::new()
     }
 }
 
-impl Forward {
+impl Autodiff {
     /// Default configuration.
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            transform: Box::new(Validate),
+
+            exports: HashMap::new(),
+
+            #[cfg(feature = "names")]
+            names: false,
+        }
     }
 
     /// Do not validate input Wasm.
     pub fn no_validate() -> Self {
         Self {
-            runner: Box::new(NoValidate),
-            config: Default::default(),
-        }
-    }
+            transform: Box::new(NoValidate),
 
-    /// Transform a WebAssembly module using this configuration.
-    pub fn transform(&self, wasm: &[u8]) -> Result<Vec<u8>, Error> {
-        self.runner
-            .transform(&self.config, wasm)
-            .map_err(|inner| Error { inner })
-    }
-}
+            exports: HashMap::new(),
 
-/// WebAssembly code transformation to perform reverse mode automatic differentiation.
-///
-/// Create an empty config via [`Reverse::new`], use [`Reverse::export`] to specify one or more
-/// functions to export the backward pass, and then use [`Reverse::transform`] to process a Wasm
-/// module.
-///
-/// For example, if you have [`wat`][] and [Wasmtime][] installed:
-///
-/// ```
-/// use wasmtime::{Engine, Instance, Module, Store};
-///
-/// let input = wat::parse_str(r#"
-/// (module
-///   (func (export "square") (param f64) (result f64)
-///     (f64.mul (local.get 0) (local.get 0))))
-/// "#).unwrap();
-///
-/// let mut ad = floretta::Reverse::new();
-/// ad.export("square", "backprop");
-/// let output = ad.transform(&input).unwrap();
-///
-/// let engine = Engine::default();
-/// let mut store = Store::new(&engine, ());
-/// let module = Module::new(&engine, &output).unwrap();
-/// let instance = Instance::new(&mut store, &module, &[]).unwrap();
-/// let square = instance.get_typed_func::<f64, f64>(&mut store, "square").unwrap();
-/// let backprop = instance.get_typed_func::<f64, f64>(&mut store, "backprop").unwrap();
-///
-/// assert_eq!(square.call(&mut store, 3.).unwrap(), 9.);
-/// assert_eq!(backprop.call(&mut store, 1.).unwrap(), 6.);
-/// ```
-///
-/// [`wat`]: https://crates.io/crates/wat
-/// [wasmtime]: https://crates.io/crates/wasmtime
-pub struct Reverse {
-    runner: Box<dyn ReverseTransform>,
-    config: reverse::Config,
-}
-
-impl Default for Reverse {
-    fn default() -> Self {
-        Self {
-            runner: Box::new(Validate),
-            config: Default::default(),
-        }
-    }
-}
-
-impl Reverse {
-    /// Default configuration.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Do not validate input Wasm.
-    pub fn no_validate() -> Self {
-        Self {
-            runner: Box::new(NoValidate),
-            config: Default::default(),
+            #[cfg(feature = "names")]
+            names: false,
         }
     }
 
     /// Include the name section in the output Wasm.
     #[cfg(feature = "names")]
     pub fn names(&mut self) {
-        self.config.names = true;
+        self.names = true;
     }
 
-    /// Export the backward pass of a function that is already exported.
-    pub fn export(&mut self, forward: impl Into<String>, backward: impl Into<String>) {
-        self.config.exports.insert(forward.into(), backward.into());
+    /// In the output Wasm, also export the derivative counterpart of an export from the input Wasm.
+    pub fn export(&mut self, primal: impl Into<String>, derivative: impl Into<String>) {
+        match self.exports.entry(primal.into()) {
+            Entry::Occupied(entry) => panic!("mapping already exists for export {:?}", entry.key()),
+            Entry::Vacant(entry) => {
+                entry.insert(derivative.into());
+            }
+        }
     }
 
-    /// Transform a WebAssembly module using this configuration.
-    pub fn transform(&self, wasm: &[u8]) -> Result<Vec<u8>, Error> {
-        self.runner
-            .transform(&self.config, wasm)
+    /// Transform a WebAssembly module to compute derivatives in forward mode.
+    pub fn forward(&self, wasm: &[u8]) -> Result<Vec<u8>, Error> {
+        self.transform
+            .forward(self, wasm)
+            .map_err(|inner| Error { inner })
+    }
+
+    /// Transform a WebAssembly module to compute derivatives in reverse mode.
+    pub fn reverse(&self, wasm: &[u8]) -> Result<Vec<u8>, Error> {
+        self.transform
+            .reverse(self, wasm)
             .map_err(|inner| Error { inner })
     }
 }

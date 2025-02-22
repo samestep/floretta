@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::bail;
 use clap::Parser;
-use floretta::{Forward, Reverse};
+use floretta::Autodiff;
 use itertools::Itertools;
 use termcolor::{ColorChoice, NoColor, StandardStream, WriteColor};
 
@@ -63,38 +63,23 @@ fn main() -> anyhow::Result<()> {
         }
         Cow::Owned(bytes) => bytes,
     };
+    let mut ad = if args.no_validate {
+        Autodiff::no_validate()
+    } else {
+        Autodiff::new()
+    };
+    if !args.no_names {
+        ad.names();
+    }
+    for pair in args.name.into_iter().chunks(2).into_iter() {
+        let (forward, backward) = pair.collect_tuple().unwrap();
+        ad.export(forward, backward);
+    }
     let after = match (args.forward, args.reverse) {
         (false, false) => bail!("must select either `--forward` mode or `--reverse` mode"),
         (true, true) => bail!("can't select both forward mode and reverse mode at once"),
-        (true, false) => {
-            let ad = if args.no_validate {
-                Forward::no_validate()
-            } else {
-                Forward::new()
-            };
-            if !args.no_names {
-                bail!("the name section is not yet supported in forward mode");
-            }
-            if !args.name.is_empty() {
-                bail!("can't use `--export` in forward mode");
-            }
-            ad.transform(&before)?
-        }
-        (false, true) => {
-            let mut ad = if args.no_validate {
-                Reverse::no_validate()
-            } else {
-                Reverse::new()
-            };
-            if !args.no_names {
-                ad.names();
-            }
-            for pair in args.name.into_iter().chunks(2).into_iter() {
-                let (forward, backward) = pair.collect_tuple().unwrap();
-                ad.export(forward, backward);
-            }
-            ad.transform(&before)?
-        }
+        (true, false) => ad.forward(&before)?,
+        (false, true) => ad.reverse(&before)?,
     };
     if args.wat {
         match args.output {

@@ -1,14 +1,14 @@
-use std::{collections::HashMap, iter};
+use std::iter;
 
 use wasm_encoder::{
     CodeSection, Encode, ExportKind, ExportSection, Function, FunctionSection, GlobalSection,
     InstructionSink, MemorySection, Module, TypeSection,
     reencode::{Reencode, RoundtripReencoder},
 };
-use wasmparser::{FunctionBody, Operator, Parser, Payload, Validator, WasmFeatures};
+use wasmparser::{FunctionBody, Operator, Parser, Payload};
 
 use crate::{
-    NoValidate, Validate,
+    Autodiff,
     helper::{
         FUNC_F32_DIV_BWD, FUNC_F32_DIV_FWD, FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F64_DIV_BWD,
         FUNC_F64_DIV_FWD, FUNC_F64_MUL_BWD, FUNC_F64_MUL_FWD, FUNC_TAPE_I32, FUNC_TAPE_I32_BWD,
@@ -20,40 +20,9 @@ use crate::{
     validate::{FunctionValidator, ModuleValidator},
 };
 
-#[derive(Debug, Default)]
-pub struct Config {
-    /// Exported functions whose backward passes should also be exported.
-    pub exports: HashMap<String, String>,
-
-    /// Whether to include the names section in the output Wasm.
-    #[cfg(feature = "names")]
-    pub names: bool,
-}
-
-pub trait ReverseTransform {
-    fn transform(&self, config: &Config, wasm_module: &[u8]) -> crate::Result<Vec<u8>>;
-}
-
-// We make `ReverseTransform` a `trait` instead of just an `enum`, to facilitate dead code elimination
-// when validation is not needed.
-
-impl ReverseTransform for Validate {
-    fn transform(&self, config: &Config, wasm_module: &[u8]) -> crate::Result<Vec<u8>> {
-        let features = WasmFeatures::empty() | WasmFeatures::MULTI_VALUE | WasmFeatures::FLOATS;
-        let validator = Validator::new_with_features(features);
-        transform(validator, config, wasm_module)
-    }
-}
-
-impl ReverseTransform for NoValidate {
-    fn transform(&self, config: &Config, wasm_module: &[u8]) -> crate::Result<Vec<u8>> {
-        transform((), config, wasm_module)
-    }
-}
-
-fn transform(
+pub fn transform(
     mut validator: impl ModuleValidator,
-    config: &Config,
+    config: &Autodiff,
     wasm_module: &[u8],
 ) -> crate::Result<Vec<u8>> {
     let mut types = TypeSection::new();
@@ -929,13 +898,15 @@ mod tests {
     use goldenfile::Mint;
     use wasmtime::{Engine, Instance, Module, Store};
 
+    use crate::Autodiff;
+
     #[test]
     #[cfg(feature = "names")]
     fn test_names() {
         let input = wat::parse_str(include_str!("wat/names.wat")).unwrap();
-        let mut ad = crate::Reverse::new();
+        let mut ad = Autodiff::new();
         ad.names();
-        let output = wasmprinter::print_bytes(ad.transform(&input).unwrap()).unwrap();
+        let output = wasmprinter::print_bytes(ad.reverse(&input).unwrap()).unwrap();
         let mut mint = Mint::new("src/reverse");
         let mut file = mint.new_goldenfile("names.wat").unwrap();
         file.write_all(output.as_bytes()).unwrap();
@@ -945,9 +916,9 @@ mod tests {
     fn test_square() {
         let input = wat::parse_str(include_str!("wat/square.wat")).unwrap();
 
-        let mut ad = crate::Reverse::new();
+        let mut ad = Autodiff::new();
         ad.export("square", "backprop");
-        let output = ad.transform(&input).unwrap();
+        let output = ad.reverse(&input).unwrap();
 
         let engine = Engine::default();
         let mut store = Store::new(&engine, ());
@@ -968,9 +939,9 @@ mod tests {
     fn test_tuple() {
         let input = wat::parse_str(include_str!("wat/tuple.wat")).unwrap();
 
-        let mut ad = crate::Reverse::new();
+        let mut ad = Autodiff::new();
         ad.export("tuple", "backprop");
-        let output = ad.transform(&input).unwrap();
+        let output = ad.reverse(&input).unwrap();
 
         let engine = Engine::default();
         let mut store = Store::new(&engine, ());
@@ -997,9 +968,9 @@ mod tests {
     fn test_loop() {
         let input = wat::parse_str(include_str!("wat/loop.wat")).unwrap();
 
-        let mut ad = crate::Reverse::new();
+        let mut ad = Autodiff::new();
         ad.export("loop", "backprop");
-        let output = ad.transform(&input).unwrap();
+        let output = ad.reverse(&input).unwrap();
 
         let engine = Engine::default();
         let mut store = Store::new(&engine, ());
@@ -1020,9 +991,9 @@ mod tests {
     fn test_f32_mul() {
         let input = wat::parse_str(include_str!("wat/f32_mul.wat")).unwrap();
 
-        let mut ad = crate::Reverse::new();
+        let mut ad = Autodiff::new();
         ad.export("mul", "backprop");
-        let output = ad.transform(&input).unwrap();
+        let output = ad.reverse(&input).unwrap();
 
         let engine = Engine::default();
         let mut store = Store::new(&engine, ());
@@ -1043,9 +1014,9 @@ mod tests {
     fn test_f32_div() {
         let input = wat::parse_str(include_str!("wat/f32_div.wat")).unwrap();
 
-        let mut ad = crate::Reverse::new();
+        let mut ad = Autodiff::new();
         ad.export("div", "backprop");
-        let output = ad.transform(&input).unwrap();
+        let output = ad.reverse(&input).unwrap();
 
         let engine = Engine::default();
         let mut store = Store::new(&engine, ());
@@ -1066,9 +1037,9 @@ mod tests {
     fn test_f64_mul() {
         let input = wat::parse_str(include_str!("wat/f64_mul.wat")).unwrap();
 
-        let mut ad = crate::Reverse::new();
+        let mut ad = Autodiff::new();
         ad.export("mul", "backprop");
-        let output = ad.transform(&input).unwrap();
+        let output = ad.reverse(&input).unwrap();
 
         let engine = Engine::default();
         let mut store = Store::new(&engine, ());
@@ -1089,9 +1060,9 @@ mod tests {
     fn test_f64_div() {
         let input = wat::parse_str(include_str!("wat/f64_div.wat")).unwrap();
 
-        let mut ad = crate::Reverse::new();
+        let mut ad = Autodiff::new();
         ad.export("div", "backprop");
-        let output = ad.transform(&input).unwrap();
+        let output = ad.reverse(&input).unwrap();
 
         let engine = Engine::default();
         let mut store = Store::new(&engine, ());

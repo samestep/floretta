@@ -2,41 +2,17 @@ use wasm_encoder::{
     CodeSection, ExportSection, Function, FunctionSection, InstructionSink, Module, TypeSection,
     reencode::{Reencode, RoundtripReencoder},
 };
-use wasmparser::{FunctionBody, Operator, Parser, Payload, Validator, WasmFeatures};
+use wasmparser::{FunctionBody, Operator, Parser, Payload};
 
 use crate::{
-    NoValidate, Validate,
+    Autodiff,
     util::u32_to_usize,
     validate::{FunctionValidator, ModuleValidator},
 };
 
-#[derive(Debug, Default)]
-pub struct Config {}
-
-pub trait ForwardTransform {
-    fn transform(&self, config: &Config, wasm_module: &[u8]) -> crate::Result<Vec<u8>>;
-}
-
-// We make `ForwardTransform` a `trait` instead of just an `enum`, to facilitate dead code elimination
-// when validation is not needed.
-
-impl ForwardTransform for Validate {
-    fn transform(&self, config: &Config, wasm_module: &[u8]) -> crate::Result<Vec<u8>> {
-        let features = WasmFeatures::empty() | WasmFeatures::FLOATS;
-        let validator = Validator::new_with_features(features);
-        transform(validator, config, wasm_module)
-    }
-}
-
-impl ForwardTransform for NoValidate {
-    fn transform(&self, config: &Config, wasm_module: &[u8]) -> crate::Result<Vec<u8>> {
-        transform((), config, wasm_module)
-    }
-}
-
-fn transform(
+pub fn transform(
     mut validator: impl ModuleValidator,
-    _: &Config,
+    _: &Autodiff,
     wasm_module: &[u8],
 ) -> crate::Result<Vec<u8>> {
     let mut types = TypeSection::new();
@@ -209,12 +185,13 @@ impl Func {
 mod tests {
     use wasmtime::{Engine, Instance, Module, Store};
 
+    use crate::Autodiff;
+
     #[test]
     fn test_square() {
         let input = wat::parse_str(include_str!("wat/square.wat")).unwrap();
 
-        let ad = crate::Forward::new();
-        let output = ad.transform(&input).unwrap();
+        let output = Autodiff::new().forward(&input).unwrap();
 
         let engine = Engine::default();
         let mut store = Store::new(&engine, ());

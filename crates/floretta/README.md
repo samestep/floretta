@@ -12,9 +12,10 @@ Here are some usage examples, assuming you have [`wat`][] and [Wasmtime][] insta
 
 ## Forward mode
 
-Use `Forward::new` to create an empty config, then use `Forward::transform` to process a Wasm module.
+Use `Autodiff::new` to create an empty config, then use `Autodiff::forward` to transform a Wasm module to compute derivatives in forward mode.
 
 ```rust
+use floretta::Autodiff;
 use wasmtime::{Engine, Instance, Module, Store};
 
 let input = wat::parse_str(r#"
@@ -23,8 +24,7 @@ let input = wat::parse_str(r#"
     (f64.mul (local.get 0) (local.get 0))))
 "#).unwrap();
 
-let ad = floretta::Forward::new();
-let output = ad.transform(&input).unwrap();
+let output = Autodiff::new().forward(&input).unwrap();
 
 let engine = Engine::default();
 let mut store = Store::new(&engine, ());
@@ -37,9 +37,10 @@ assert_eq!(square.call(&mut store, (3., 1.)).unwrap(), (9., 6.));
 
 ## Reverse mode
 
-Create an empty config via `Reverse::new`, use `Reverse::export` to specify one or more functions to export the backward pass, and then use `Reverse::transform` to process a Wasm module.
+Create an empty config via `Autodiff::new`, use `Autodiff::export` to specify one or more functions to export the backward pass, and then use `Autodiff::reverse` to transform a Wasm module to compute derivatives in reverse mode.
 
 ```rust
+use floretta::Autodiff;
 use wasmtime::{Engine, Instance, Module, Store};
 
 let input = wat::parse_str(r#"
@@ -48,9 +49,9 @@ let input = wat::parse_str(r#"
     (f64.mul (local.get 0) (local.get 0))))
 "#).unwrap();
 
-let mut ad = floretta::Reverse::new();
+let mut ad = Autodiff::new();
 ad.export("square", "backprop");
-let output = ad.transform(&input).unwrap();
+let output = ad.reverse(&input).unwrap();
 
 let engine = Engine::default();
 let mut store = Store::new(&engine, ());
