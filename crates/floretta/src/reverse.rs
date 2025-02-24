@@ -16,7 +16,7 @@ use crate::{
         TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD, TYPE_TAPE_I32,
         TYPE_TAPE_I32_BWD, helpers,
     },
-    util::u32_to_usize,
+    util::{FuncTypes, ValType, u32_to_usize},
     validate::{FunctionValidator, ModuleValidator},
 };
 
@@ -116,26 +116,30 @@ pub fn transform(
         code.function(&f);
     }
     assert_eq!(code.len(), OFFSET_FUNCTIONS);
-    let mut type_sigs = Vec::new();
-    let mut func_sigs = Vec::new();
+    let mut type_sigs = FuncTypes::new();
+    let mut func_types = Vec::new();
     let mut func_infos = Vec::new();
+
     #[cfg(feature = "names")]
     let mut names = None;
+
     for payload in Parser::new(0).parse_all(wasm_module) {
         match payload? {
             Payload::TypeSection(section) => {
                 validator.type_section(&section)?;
-                for func_ty in section.into_iter_err_on_gc_types() {
-                    let ty = RoundtripReencoder.func_type(func_ty?)?;
+                for ty in section.into_iter_err_on_gc_types() {
+                    let typeidx = type_sigs.push(ty?)?;
                     // Forward pass: same type as the original function. All the adjoint values are
                     // assumed to be zero.
-                    types.ty().func_type(&ty);
+                    types.ty().func_type(&wasm_encoder::FuncType::new(
+                        type_sigs.params(typeidx).iter().map(|&ty| ty.into()),
+                        type_sigs.results(typeidx).iter().map(|&ty| ty.into()),
+                    ));
                     // Backward pass: results become parameters, and parameters become results.
                     types.ty().func_type(&wasm_encoder::FuncType::new(
-                        ty.results().iter().copied(),
-                        ty.params().iter().copied(),
+                        type_sigs.results(typeidx).iter().map(|&ty| ty.into()),
+                        type_sigs.params(typeidx).iter().map(|&ty| ty.into()),
                     ));
-                    type_sigs.push(ty);
                 }
             }
             Payload::FunctionSection(section) => {
@@ -147,8 +151,7 @@ pub fn transform(
                     // into two.
                     functions.function(OFFSET_TYPES + 2 * t);
                     functions.function(OFFSET_TYPES + 2 * t + 1);
-                    // TODO: Finagle things to not have to clone these signatures.
-                    func_sigs.push(type_sigs[u32_to_usize(t)].clone());
+                    func_types.push(t);
                 }
             }
             Payload::MemorySection(section) => {
@@ -198,19 +201,24 @@ pub fn transform(
             Payload::CodeSectionEntry(body) => {
                 let func = validator.code_section_entry(&body)?;
                 let index = func_infos.len().try_into().unwrap();
-                let (info, fwd, bwd) = function(func, &func_sigs, index, body)?;
+                let (info, fwd, bwd) = function(func, &type_sigs, &func_types, index, body)?;
                 func_infos.push(info);
                 code.raw(&fwd);
                 code.raw(&bwd);
             }
+
             #[cfg(feature = "names")]
             Payload::CustomSection(section) => {
                 if let wasmparser::KnownCustom::Name(reader) = section.as_known() {
                     if config.names {
-                        names = Some(crate::name::Names::new(func_infos.as_slice(), reader)?);
+                        names = Some(crate::name::Names::new(
+                            (&type_sigs, func_infos.as_slice()),
+                            reader,
+                        )?);
                     }
                 }
             }
+
             other => validator.payload(&other)?,
         }
     }
@@ -221,72 +229,77 @@ pub fn transform(
     module.section(&globals);
     module.section(&exports);
     module.section(&code);
+
     #[cfg(feature = "names")]
     if config.names {
-        module.section(&crate::name::name_section(func_infos.as_slice(), names));
+        module.section(&crate::name::name_section(
+            (&type_sigs, func_infos.as_slice()),
+            names,
+        ));
     }
+
     Ok(module.finish())
 }
 
 // When the `names` feature is disabled, this gets marked as dead code.
 #[allow(dead_code)]
 struct FunctionInfo {
-    sig: wasm_encoder::FuncType,
+    typeidx: u32,
     locals: u32,
     stack_locals: StackHeight,
 }
 
 #[cfg(feature = "names")]
-impl crate::name::FuncInfo for &[FunctionInfo] {
+impl crate::name::FuncInfo for (&FuncTypes, &[FunctionInfo]) {
     fn num_functions(&self) -> u32 {
-        self.len().try_into().unwrap()
+        self.1.len().try_into().unwrap()
     }
 
     fn num_results(&self, funcidx: u32) -> u32 {
-        self[u32_to_usize(funcidx)]
-            .sig
-            .results()
+        self.0
+            .results(self.1[u32_to_usize(funcidx)].typeidx)
             .len()
             .try_into()
             .unwrap()
     }
 
     fn num_locals(&self, funcidx: u32) -> u32 {
-        self[u32_to_usize(funcidx)].locals
+        self.1[u32_to_usize(funcidx)].locals
     }
 
     fn stack_locals(&self, funcidx: u32) -> StackHeight {
-        self[u32_to_usize(funcidx)].stack_locals
+        self.1[u32_to_usize(funcidx)].stack_locals
     }
 }
 
 fn function(
     mut validator: impl FunctionValidator,
-    signatures: &[wasm_encoder::FuncType],
-    index: u32,
+    type_sigs: &FuncTypes,
+    func_types: &[u32],
+    funcidx: u32,
     body: FunctionBody,
 ) -> crate::Result<(FunctionInfo, Vec<u8>, Vec<u8>)> {
-    let sig = &signatures[u32_to_usize(index)];
-    let num_params: u32 = sig.params().len().try_into().unwrap();
-    let num_results: u32 = sig.results().len().try_into().unwrap();
-    let mut locals = sig.params().to_vec();
+    let typeidx = func_types[u32_to_usize(funcidx)];
+    let params = type_sigs.params(typeidx);
+    let results = type_sigs.results(typeidx);
+    let num_params: u32 = params.len().try_into().unwrap();
+    let num_results: u32 = results.len().try_into().unwrap();
+    let mut locals = params.to_vec();
     let mut locals_reader = body.get_locals_reader()?;
     for _ in 0..locals_reader.get_count() {
         let offset = locals_reader.original_position();
         let (count, ty) = locals_reader.read()?;
         validator.define_locals(offset, count, ty)?;
-        locals.extend(iter::repeat_n(
-            RoundtripReencoder.val_type(ty)?,
-            u32_to_usize(count),
-        ));
+        locals.extend(iter::repeat_n(ValType::try_from(ty)?, u32_to_usize(count)));
     }
     // TODO: Preserve compact encoding of locals from the original function.
-    let fwd = Function::new_with_locals_types(locals.iter().skip(sig.params().len()).copied());
+    let fwd =
+        Function::new_with_locals_types(locals.iter().skip(params.len()).map(|&ty| ty.into()));
     let mut bwd = ReverseFunction::new(num_results);
     for &local in &locals {
         bwd.local(local);
     }
-    let tmp_f64 = bwd.local(wasm_encoder::ValType::F64);
+    let tmp_f64 = bwd.local(ValType::F64);
     // The first basic block in the forward pass corresponds to the last basic block in the backward
     // pass, and because each basic block will be reversed, the first instructions we write will
     // become the last instructions in the function body of the backward pass. Because Wasm
@@ -325,7 +338,7 @@ fn function(
     validator.finish(operators_reader.original_position())?;
     Ok((
         FunctionInfo {
-            sig: sig.clone(), // TODO: Finagle things to not have to clone these signatures.
+            typeidx,
             locals: locals.len().try_into().unwrap(),
             stack_locals: func.bwd.max_stack_heights,
         },
@@ -339,12 +352,12 @@ struct Func<'a> {
     num_results: u32,
 
     /// Locals in the original function.
-    locals: &'a [wasm_encoder::ValType], // TODO: use smaller `wasmparser::ValType` instead
+    locals: &'a [ValType],
 
     /// The current byte offset in the original function body.
     offset: u32,
 
-    operand_stack: Vec<wasm_encoder::ValType>, // TODO: use smaller `wasmparser::ValType` instead
+    operand_stack: Vec<ValType>,
 
     operand_stack_height: StackHeight,
 
@@ -404,19 +417,17 @@ impl Func<'_> {
                 self.fwd.instructions().local_get(local_index);
                 let i = self.bwd_local(local_index);
                 match ty {
-                    wasm_encoder::ValType::I32 | wasm_encoder::ValType::I64 => {
+                    ValType::I32 | ValType::I64 => {
                         self.bwd.instructions(|insn| insn.drop());
                     }
-                    wasm_encoder::ValType::F32 => {
+                    ValType::F32 => {
                         self.bwd
                             .instructions(|insn| insn.local_get(i).f32_add().local_set(i));
                     }
-                    wasm_encoder::ValType::F64 => {
+                    ValType::F64 => {
                         self.bwd
                             .instructions(|insn| insn.local_get(i).f64_add().local_set(i));
                     }
-                    wasm_encoder::ValType::V128 => unimplemented!(),
-                    wasm_encoder::ValType::Ref(_) => unimplemented!(),
                 }
             }
             Operator::LocalTee { local_index } => {
@@ -426,7 +437,7 @@ impl Func<'_> {
                 self.fwd.instructions().local_tee(local_index);
                 let i = self.bwd_local(local_index);
                 match ty {
-                    wasm_encoder::ValType::F64 => {
+                    ValType::F64 => {
                         self.bwd.instructions(|insn| {
                             insn.local_get(i).f64_add().f64_const(0.).local_set(i)
                         });
@@ -485,21 +496,21 @@ impl Func<'_> {
         Ok(())
     }
 
-    fn push(&mut self, ty: wasm_encoder::ValType) {
+    fn push(&mut self, ty: ValType) {
         self.operand_stack.push(ty);
         self.operand_stack_height.push(ty);
     }
 
     fn push_i32(&mut self) {
-        self.push(wasm_encoder::ValType::I32);
+        self.push(ValType::I32);
     }
 
     fn push_f32(&mut self) {
-        self.push(wasm_encoder::ValType::F32);
+        self.push(ValType::F32);
     }
 
     fn push_f64(&mut self) {
-        self.push(wasm_encoder::ValType::F64);
+        self.push(ValType::F64);
     }
 
     fn pop(&mut self) {
@@ -518,7 +529,7 @@ impl Func<'_> {
         self.pop();
     }
 
-    fn local(&self, index: u32) -> wasm_encoder::ValType {
+    fn local(&self, index: u32) -> ValType {
         self.locals[u32_to_usize(index)]
     }
 
@@ -561,22 +572,20 @@ impl StackHeight {
         }
     }
 
-    fn counter(&mut self, ty: wasm_encoder::ValType) -> &mut u32 {
+    fn counter(&mut self, ty: ValType) -> &mut u32 {
         match ty {
-            wasm_encoder::ValType::I32 => &mut self.i32,
-            wasm_encoder::ValType::I64 => &mut self.i64,
-            wasm_encoder::ValType::F32 => &mut self.f32,
-            wasm_encoder::ValType::F64 => &mut self.f64,
-            wasm_encoder::ValType::V128 => unimplemented!(),
-            wasm_encoder::ValType::Ref(_) => unimplemented!(),
+            ValType::I32 => &mut self.i32,
+            ValType::I64 => &mut self.i64,
+            ValType::F32 => &mut self.f32,
+            ValType::F64 => &mut self.f64,
         }
     }
 
-    fn push(&mut self, ty: wasm_encoder::ValType) {
+    fn push(&mut self, ty: ValType) {
         *self.counter(ty) += 1;
     }
 
-    fn pop(&mut self, ty: wasm_encoder::ValType) {
+    fn pop(&mut self, ty: ValType) {
         *self.counter(ty) -= 1;
     }
 
@@ -619,14 +628,14 @@ impl Locals {
         self.count
     }
 
-    fn locals(&mut self, count: u32, ty: wasm_encoder::ValType) {
+    fn locals(&mut self, count: u32, ty: ValType) {
         count.encode(&mut self.bytes);
-        ty.encode(&mut self.bytes);
+        wasm_encoder::ValType::from(ty).encode(&mut self.bytes);
         self.blocks += 1;
         self.count += count;
     }
 
-    fn local(&mut self, ty: wasm_encoder::ValType) -> u32 {
+    fn local(&mut self, ty: ValType) -> u32 {
         let i = self.count;
         self.locals(1, ty);
         i
@@ -654,7 +663,7 @@ struct BasicBlock {
 struct ReverseFunction {
     locals: Locals,
     body: Vec<u8>,
-    stacks: Vec<wasm_encoder::ValType>, // TODO: use smaller `wasmparser::ValType` instead
+    stacks: Vec<ValType>,
     basic_blocks: Vec<BasicBlock>,
     block_start_offset: usize,
     block_stack_offset: usize,
@@ -676,12 +685,12 @@ impl ReverseFunction {
         }
     }
 
-    fn local(&mut self, ty: wasm_encoder::ValType) -> u32 {
+    fn local(&mut self, ty: ValType) -> u32 {
         self.locals.local(ty)
     }
 
     /// Extend the portion of the stack used by the current basic block.
-    fn deepen_stack(&mut self, ty: wasm_encoder::ValType) {
+    fn deepen_stack(&mut self, ty: ValType) {
         self.stacks.push(ty);
     }
 
@@ -696,7 +705,7 @@ impl ReverseFunction {
         self.basic_blocks.len().try_into().unwrap()
     }
 
-    fn end_basic_block(&mut self, height: StackHeight, stack: &[wasm_encoder::ValType]) {
+    fn end_basic_block(&mut self, height: StackHeight, stack: &[ValType]) {
         self.body[self.block_start_offset..].reverse();
         let stack_end_offset = self.stacks.len().try_into().unwrap();
         self.stacks.extend_from_slice(stack);
@@ -711,20 +720,16 @@ impl ReverseFunction {
         self.max_stack_heights.take_max(height);
     }
 
-    fn into_raw_body(mut self, operand_stack: &[wasm_encoder::ValType]) -> Vec<u8> {
+    fn into_raw_body(mut self, operand_stack: &[ValType]) -> Vec<u8> {
         let local_count = self.locals.count();
         // When we cross a basic block boundary in the backward pass, everything on the stack needs
         // to be put into locals so that they can be retrieved after the `loop` dispatches to a
         // given basic block. We've kept track of the maximum number of values in the stack for each
         // type at each basic block boundary, so now we allocate enough locals to store them all.
-        self.locals
-            .locals(self.max_stack_heights.i32, wasm_encoder::ValType::I32);
-        self.locals
-            .locals(self.max_stack_heights.i64, wasm_encoder::ValType::I64);
-        self.locals
-            .locals(self.max_stack_heights.f32, wasm_encoder::ValType::F32);
-        self.locals
-            .locals(self.max_stack_heights.f64, wasm_encoder::ValType::F64);
+        self.locals.locals(self.max_stack_heights.i32, ValType::I32);
+        self.locals.locals(self.max_stack_heights.i64, ValType::I64);
+        self.locals.locals(self.max_stack_heights.f32, ValType::F32);
+        self.locals.locals(self.max_stack_heights.f64, ValType::F64);
         let mut body = Vec::new();
         self.locals.blocks().encode(&mut body);
         body.extend_from_slice(self.locals.bytes());
@@ -747,7 +752,7 @@ struct ReverseReverseFunction {
 }
 
 impl ReverseReverseFunction {
-    fn consume(mut self, operand_stack: &[wasm_encoder::ValType]) -> Vec<u8> {
+    fn consume(mut self, operand_stack: &[ValType]) -> Vec<u8> {
         let mut operand_stack_height = StackHeight::new();
         for (i, &ty) in (0..).zip(operand_stack.iter()) {
             self.instructions().local_get(i);
@@ -817,20 +822,10 @@ impl ReverseReverseFunction {
             reverse_encode(&mut self.body, |insn| insn.local_set(i));
             // TODO: Only set stack locals to zero when they won't be overwritten later anyway.
             match ty {
-                wasm_encoder::ValType::I32 => {
-                    reverse_encode(&mut self.body, |insn| insn.i32_const(0));
-                }
-                wasm_encoder::ValType::I64 => {
-                    reverse_encode(&mut self.body, |insn| insn.i64_const(0));
-                }
-                wasm_encoder::ValType::F32 => {
-                    reverse_encode(&mut self.body, |insn| insn.f32_const(0.));
-                }
-                wasm_encoder::ValType::F64 => {
-                    reverse_encode(&mut self.body, |insn| insn.f64_const(0.));
-                }
-                wasm_encoder::ValType::V128 => unimplemented!(),
-                wasm_encoder::ValType::Ref(_) => unimplemented!(),
+                ValType::I32 => reverse_encode(&mut self.body, |insn| insn.i32_const(0)),
+                ValType::I64 => reverse_encode(&mut self.body, |insn| insn.i64_const(0)),
+                ValType::F32 => reverse_encode(&mut self.body, |insn| insn.f32_const(0.)),
+                ValType::F64 => reverse_encode(&mut self.body, |insn| insn.f64_const(0.)),
             }
             reverse_encode(&mut self.body, |insn| insn.local_get(i));
         }
@@ -854,29 +849,25 @@ impl ReverseReverseFunction {
         InstructionSink::new(&mut self.body)
     }
 
-    fn local_index(&self, ty: wasm_encoder::ValType) -> u32 {
+    fn local_index(&self, ty: ValType) -> u32 {
         self.local_index_raw(self.operand_stack_height, ty)
     }
 
-    fn local_index_raw(&self, operand_stack_height: StackHeight, ty: wasm_encoder::ValType) -> u32 {
+    fn local_index_raw(&self, operand_stack_height: StackHeight, ty: ValType) -> u32 {
         let i = match ty {
-            wasm_encoder::ValType::I32 => operand_stack_height.i32,
-            wasm_encoder::ValType::I64 => {
-                operand_stack_height.i64 + self.func.max_stack_heights.i32
-            }
-            wasm_encoder::ValType::F32 => {
+            ValType::I32 => operand_stack_height.i32,
+            ValType::I64 => operand_stack_height.i64 + self.func.max_stack_heights.i32,
+            ValType::F32 => {
                 operand_stack_height.f32
                     + self.func.max_stack_heights.i64
                     + self.func.max_stack_heights.i32
             }
-            wasm_encoder::ValType::F64 => {
+            ValType::F64 => {
                 operand_stack_height.f64
                     + self.func.max_stack_heights.f32
                     + self.func.max_stack_heights.i64
                     + self.func.max_stack_heights.i32
             }
-            wasm_encoder::ValType::V128 => unimplemented!(),
-            wasm_encoder::ValType::Ref(_) => unimplemented!(),
         };
         self.local_count + i
     }

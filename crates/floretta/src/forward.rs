@@ -6,7 +6,7 @@ use wasmparser::{FunctionBody, Operator, Parser, Payload};
 
 use crate::{
     Autodiff,
-    util::u32_to_usize,
+    util::{FuncTypes, ValType, u32_to_usize},
     validate::{FunctionValidator, ModuleValidator},
 };
 
@@ -19,19 +19,19 @@ pub fn transform(
     let mut functions = FunctionSection::new();
     let mut exports = ExportSection::new();
     let mut code = CodeSection::new();
-    let mut type_sigs = Vec::new();
+    let mut type_sigs = FuncTypes::new();
     let mut func_types = Vec::new();
     let mut num_bodies = 0;
     for payload in Parser::new(0).parse_all(wasm_module) {
         match payload? {
             Payload::TypeSection(section) => {
                 validator.type_section(&section)?;
-                for func_ty in section.into_iter_err_on_gc_types() {
-                    let ty = func_ty?;
-                    types
-                        .ty()
-                        .function(tuple(ty.params())?, tuple(ty.results())?);
-                    type_sigs.push(ty);
+                for ty in section.into_iter_err_on_gc_types() {
+                    let typeidx = type_sigs.push(ty?)?;
+                    types.ty().function(
+                        tuple(type_sigs.params(typeidx))?,
+                        tuple(type_sigs.results(typeidx))?,
+                    );
                 }
             }
             Payload::FunctionSection(section) => {
@@ -48,7 +48,7 @@ pub fn transform(
             }
             Payload::CodeSectionEntry(body) => {
                 let func = validator.code_section_entry(&body)?;
-                code.function(&function(func, &type_sigs[num_bodies], body)?);
+                code.function(&function(func, &type_sigs, func_types[num_bodies], body)?);
                 num_bodies += 1;
             }
             other => validator.payload(&other)?,
@@ -62,20 +62,16 @@ pub fn transform(
     Ok(module.finish())
 }
 
-fn tuple(val_types: &[wasmparser::ValType]) -> crate::Result<Vec<wasm_encoder::ValType>> {
+fn tuple(val_types: &[ValType]) -> crate::Result<Vec<wasm_encoder::ValType>> {
     let mut types = Vec::new();
-    for ty in val_types {
+    for &ty in val_types {
         match ty {
-            wasmparser::ValType::I32 | wasmparser::ValType::I64 => {
-                types.push(RoundtripReencoder.val_type(*ty)?);
-            }
-            wasmparser::ValType::F32 | wasmparser::ValType::F64 => {
-                let reencoded = RoundtripReencoder.val_type(*ty)?;
+            ValType::I32 | ValType::I64 => types.push(ty.into()),
+            ValType::F32 | ValType::F64 => {
+                let reencoded = ty.into();
                 types.push(reencoded);
                 types.push(reencoded);
             }
-            wasmparser::ValType::V128 => unimplemented!(),
-            wasmparser::ValType::Ref(_) => unimplemented!(),
         }
     }
     Ok(types)
@@ -83,28 +79,27 @@ fn tuple(val_types: &[wasmparser::ValType]) -> crate::Result<Vec<wasm_encoder::V
 
 fn function(
     mut validator: impl FunctionValidator,
-    sig: &wasmparser::FuncType,
+    type_sigs: &FuncTypes,
+    typeidx: u32,
     body: FunctionBody,
 ) -> crate::Result<Function> {
     let mut local_indices = Vec::new();
     let mut local_index = 0;
-    for ty in sig.params() {
+    for ty in type_sigs.params(typeidx) {
         match ty {
-            wasmparser::ValType::I32 | wasmparser::ValType::I64 => {
+            ValType::I32 | ValType::I64 => {
                 local_indices.push(local_index);
                 local_index += 1;
             }
-            wasmparser::ValType::F32 | wasmparser::ValType::F64 => {
+            ValType::F32 | ValType::F64 => {
                 local_indices.push(local_index);
                 local_index += 2;
             }
-            wasmparser::ValType::V128 => unimplemented!(),
-            wasmparser::ValType::Ref(_) => unimplemented!(),
         }
     }
     assert_eq!(body.get_locals_reader()?.get_count(), 0); // TODO: Handle locals.
     let mut func = Func {
-        local_types: sig.params().to_vec(),
+        local_types: type_sigs.params(typeidx).to_vec(),
         local_indices,
         tmp_f64: (
             local_index,
@@ -125,7 +120,7 @@ fn function(
 }
 
 struct Func {
-    local_types: Vec<wasmparser::ValType>,
+    local_types: Vec<ValType>,
     local_indices: Vec<u32>,
     tmp_f64: (u32, u32, u32, u32),
     body: Function,
@@ -140,9 +135,7 @@ impl Func {
             Operator::LocalGet { local_index } => {
                 let i = self.local_index(local_index);
                 self.instructions().local_get(i);
-                if let wasmparser::ValType::F32 | wasmparser::ValType::F64 =
-                    self.local_type(local_index)
-                {
+                if let ValType::F32 | ValType::F64 = self.local_type(local_index) {
                     self.instructions().local_get(i + 1);
                 }
             }
@@ -168,7 +161,7 @@ impl Func {
         Ok(())
     }
 
-    fn local_type(&self, index: u32) -> wasmparser::ValType {
+    fn local_type(&self, index: u32) -> ValType {
         self.local_types[u32_to_usize(index)]
     }
 

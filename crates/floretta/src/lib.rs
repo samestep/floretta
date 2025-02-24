@@ -84,6 +84,9 @@ enum ErrorImpl {
     #[error("Wasm parsing or validation error: {0}")]
     Parse(#[from] BinaryReaderError),
 
+    #[error("code transformation error: {0}")]
+    Transform(&'static str),
+
     #[error("Wasm reencoding error: {0}")]
     Reencode(#[from] reencode::Error),
 }
@@ -92,6 +95,7 @@ type Result<T> = std::result::Result<T, ErrorImpl>;
 
 trait Transform {
     fn forward(&self, config: &Autodiff, wasm_module: &[u8]) -> Result<Vec<u8>>;
+
     fn reverse(&self, config: &Autodiff, wasm_module: &[u8]) -> Result<Vec<u8>>;
 }
 
