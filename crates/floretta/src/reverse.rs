@@ -475,10 +475,210 @@ impl Func {
                     }
                 }
             }
+            Operator::I32Const { value } => {
+                self.push_i32();
+                self.fwd.instructions().i32_const(value);
+            }
+            Operator::I64Const { value } => {
+                self.push_i64();
+                self.fwd.instructions().i64_const(value);
+            }
+            Operator::F32Const { value } => {
+                self.push_f32();
+                self.fwd.instructions().f32_const(value.into());
+                self.bwd.instructions(|insn| insn.drop());
+            }
             Operator::F64Const { value } => {
                 self.push_f64();
                 self.fwd.instructions().f64_const(value.into());
                 self.bwd.instructions(|insn| insn.drop());
+            }
+            Operator::I32Eqz => {
+                self.pop();
+                self.push_i32();
+                self.fwd.instructions().i32_eqz();
+            }
+            Operator::I32Eq => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_eq();
+            }
+            Operator::I32Ne => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_ne();
+            }
+            Operator::I32LtS => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_lt_s();
+            }
+            Operator::I32LtU => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_lt_u();
+            }
+            Operator::I32GtS => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_gt_s();
+            }
+            Operator::I32GtU => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_gt_u();
+            }
+            Operator::I32LeS => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_le_s();
+            }
+            Operator::I32LeU => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_le_u();
+            }
+            Operator::I32GeS => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_ge_s();
+            }
+            Operator::I32GeU => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_ge_u();
+            }
+            Operator::I64Eqz => {
+                self.pop();
+                self.push_i64();
+                self.fwd.instructions().i64_eqz();
+            }
+            Operator::I64Eq => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_eq();
+            }
+            Operator::I64Ne => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_ne();
+            }
+            Operator::I64LtS => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_lt_s();
+            }
+            Operator::I64LtU => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_lt_u();
+            }
+            Operator::I64GtS => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_gt_s();
+            }
+            Operator::I64GtU => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_gt_u();
+            }
+            Operator::I64LeS => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_le_s();
+            }
+            Operator::I64LeU => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_le_u();
+            }
+            Operator::I64GeS => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_ge_s();
+            }
+            Operator::I64GeU => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_ge_u();
+            }
+            Operator::F32Eq => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().f32_eq();
+                self.bwd
+                    .instructions(|insn| insn.f32_const(0.).f32_const(0.));
+            }
+            Operator::F32Ne => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().f32_ne();
+                self.bwd
+                    .instructions(|insn| insn.f32_const(0.).f32_const(0.));
+            }
+            Operator::F32Lt => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().f32_lt();
+                self.bwd
+                    .instructions(|insn| insn.f32_const(0.).f32_const(0.));
+            }
+            Operator::F32Gt => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().f32_gt();
+                self.bwd
+                    .instructions(|insn| insn.f32_const(0.).f32_const(0.));
+            }
+            Operator::F32Le => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().f32_le();
+                self.bwd
+                    .instructions(|insn| insn.f32_const(0.).f32_const(0.));
+            }
+            Operator::F32Ge => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().f32_ge();
+                self.bwd
+                    .instructions(|insn| insn.f32_const(0.).f32_const(0.));
+            }
+            Operator::F64Eq => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().f64_eq();
+                self.bwd
+                    .instructions(|insn| insn.f64_const(0.).f64_const(0.));
+            }
+            Operator::F64Ne => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().f64_ne();
+                self.bwd
+                    .instructions(|insn| insn.f64_const(0.).f64_const(0.));
+            }
+            Operator::F64Lt => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().f64_lt();
+                self.bwd
+                    .instructions(|insn| insn.f64_const(0.).f64_const(0.));
+            }
+            Operator::F64Gt => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().f64_gt();
+                self.bwd
+                    .instructions(|insn| insn.f64_const(0.).f64_const(0.));
+            }
+            Operator::F64Le => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().f64_le();
+                self.bwd
+                    .instructions(|insn| insn.f64_const(0.).f64_const(0.));
             }
             Operator::F64Ge => {
                 self.pop2();
@@ -486,6 +686,186 @@ impl Func {
                 self.fwd.instructions().f64_ge();
                 self.bwd
                     .instructions(|insn| insn.f64_const(0.).f64_const(0.));
+            }
+            Operator::I32Clz => {
+                self.pop();
+                self.push_i32();
+                self.fwd.instructions().i32_clz();
+            }
+            Operator::I32Ctz => {
+                self.pop();
+                self.push_i32();
+                self.fwd.instructions().i32_ctz();
+            }
+            Operator::I32Popcnt => {
+                self.pop();
+                self.push_i32();
+                self.fwd.instructions().i32_popcnt();
+            }
+            Operator::I32Add => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_add();
+            }
+            Operator::I32Sub => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_sub();
+            }
+            Operator::I32Mul => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_mul();
+            }
+            Operator::I32DivS => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_div_s();
+            }
+            Operator::I32DivU => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_div_u();
+            }
+            Operator::I32RemS => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_rem_s();
+            }
+            Operator::I32RemU => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_rem_u();
+            }
+            Operator::I32And => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_and();
+            }
+            Operator::I32Or => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_or();
+            }
+            Operator::I32Xor => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_xor();
+            }
+            Operator::I32Shl => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_shl();
+            }
+            Operator::I32ShrS => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_shr_s();
+            }
+            Operator::I32ShrU => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_shr_u();
+            }
+            Operator::I32Rotl => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_rotl();
+            }
+            Operator::I32Rotr => {
+                self.pop2();
+                self.push_i32();
+                self.fwd.instructions().i32_rotr();
+            }
+            Operator::I64Clz => {
+                self.pop();
+                self.push_i64();
+                self.fwd.instructions().i64_clz();
+            }
+            Operator::I64Ctz => {
+                self.pop();
+                self.push_i64();
+                self.fwd.instructions().i64_ctz();
+            }
+            Operator::I64Popcnt => {
+                self.pop();
+                self.push_i64();
+                self.fwd.instructions().i64_popcnt();
+            }
+            Operator::I64Add => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_add();
+            }
+            Operator::I64Sub => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_sub();
+            }
+            Operator::I64Mul => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_mul();
+            }
+            Operator::I64DivS => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_div_s();
+            }
+            Operator::I64DivU => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_div_u();
+            }
+            Operator::I64RemS => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_rem_s();
+            }
+            Operator::I64RemU => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_rem_u();
+            }
+            Operator::I64And => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_and();
+            }
+            Operator::I64Or => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_or();
+            }
+            Operator::I64Xor => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_xor();
+            }
+            Operator::I64Shl => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_shl();
+            }
+            Operator::I64ShrS => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_shr_s();
+            }
+            Operator::I64ShrU => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_shr_u();
+            }
+            Operator::I64Rotl => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_rotl();
+            }
+            Operator::I64Rotr => {
+                self.pop2();
+                self.push_i64();
+                self.fwd.instructions().i64_rotr();
             }
             Operator::F32Mul => {
                 self.pop2();
@@ -533,6 +913,10 @@ impl Func {
 
     fn push_i32(&mut self) {
         self.push(ValType::I32);
+    }
+
+    fn push_i64(&mut self) {
+        self.push(ValType::I64);
     }
 
     fn push_f32(&mut self) {
@@ -895,7 +1279,8 @@ mod tests {
     use std::{fmt, io::Write};
 
     use goldenfile::Mint;
-    use wasmtime::{Engine, Instance, Module, Store, WasmParams, WasmResults};
+    use rstest::rstest;
+    use wasmtime::{Engine, Instance, Module, Store, TypedFunc, WasmParams, WasmResults};
 
     use crate::Autodiff;
 
@@ -909,6 +1294,27 @@ mod tests {
         let mut mint = Mint::new("src/reverse");
         let mut file = mint.new_goldenfile("names.wat").unwrap();
         file.write_all(output.as_bytes()).unwrap();
+    }
+
+    fn compile<P: WasmParams, R: WasmResults, DP: WasmResults, DR: WasmParams>(
+        wat: &str,
+        name: &str,
+    ) -> (Store<()>, TypedFunc<P, R>, TypedFunc<DR, DP>) {
+        let input = wat::parse_str(wat).unwrap();
+
+        let mut ad = Autodiff::new();
+        ad.export(name, "backprop");
+        let output = ad.reverse(&input).unwrap();
+
+        let engine = Engine::default();
+        let mut store = Store::new(&engine, ());
+        let module = Module::new(&engine, &output).unwrap();
+        let instance = Instance::new(&mut store, &module, &[]).unwrap();
+        let function = instance.get_typed_func::<P, R>(&mut store, name).unwrap();
+        let backprop = instance
+            .get_typed_func::<DR, DP>(&mut store, "backprop")
+            .unwrap();
+        (store, function, backprop)
     }
 
     struct Backprop<P, R, DP, DR> {
@@ -928,24 +1334,8 @@ mod tests {
     > Backprop<P, R, DP, DR>
     {
         fn test(self) {
-            let input = wat::parse_str(self.wat).unwrap();
-
-            let mut ad = Autodiff::new();
-            ad.export(self.name, "backprop");
-            let output = ad.reverse(&input).unwrap();
-
-            let engine = Engine::default();
-            let mut store = Store::new(&engine, ());
-            let module = Module::new(&engine, &output).unwrap();
-            let instance = Instance::new(&mut store, &module, &[]).unwrap();
-            let square = instance
-                .get_typed_func::<P, R>(&mut store, self.name)
-                .unwrap();
-            let backprop = instance
-                .get_typed_func::<DR, DP>(&mut store, "backprop")
-                .unwrap();
-
-            let output = square.call(&mut store, self.input).unwrap();
+            let (mut store, function, backprop) = compile::<P, R, DP, DR>(self.wat, self.name);
+            let output = function.call(&mut store, self.input).unwrap();
             assert_eq!(output, self.output);
             let gradient = backprop.call(&mut store, self.cotangent).unwrap();
             assert_eq!(gradient, self.gradient);
@@ -987,6 +1377,648 @@ mod tests {
             output: -0.99,
             cotangent: 1.,
             gradient: 0.20000000000000018,
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_const() {
+        Backprop {
+            wat: include_str!("wat/i32_const.wat"),
+            name: "const",
+            input: (),
+            output: 42,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_const() {
+        Backprop {
+            wat: include_str!("wat/i64_const.wat"),
+            name: "const",
+            input: (),
+            output: 42i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_f32_const() {
+        Backprop {
+            wat: include_str!("wat/f32_const.wat"),
+            name: "const",
+            input: (),
+            output: 42.0f32,
+            cotangent: 1.0f32,
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_f64_const() {
+        Backprop {
+            wat: include_str!("wat/f64_const.wat"),
+            name: "const",
+            input: (),
+            output: 42.,
+            cotangent: 1.,
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_eqz() {
+        Backprop {
+            wat: include_str!("wat/i32_eqz.wat"),
+            name: "eqz",
+            input: 0,
+            output: 1,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[rstest]
+    #[case("i32.eq")]
+    #[case("i32.ne")]
+    #[case("i32.lt_s")]
+    #[case("i32.lt_u")]
+    #[case("i32.gt_s")]
+    #[case("i32.gt_u")]
+    #[case("i32.le_s")]
+    #[case("i32.le_u")]
+    #[case("i32.ge_s")]
+    #[case("i32.ge_u")]
+    fn i32_logic(#[case] name: &str) {
+        compile::<(i32, i32), i32, (), ()>(
+            &format!(
+                "
+(module
+  (func (export {name:?}) (param i32 i32) (result i32)
+    ({name}
+      (local.get 0)
+      (local.get 1))))
+"
+            ),
+            name,
+        );
+    }
+
+    #[test]
+    fn test_i64_eqz() {
+        Backprop {
+            wat: include_str!("wat/i64_eqz.wat"),
+            name: "eqz",
+            input: 0i64,
+            output: 1,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[rstest]
+    #[case("i64.eq")]
+    #[case("i64.ne")]
+    #[case("i64.lt_s")]
+    #[case("i64.lt_u")]
+    #[case("i64.gt_s")]
+    #[case("i64.gt_u")]
+    #[case("i64.le_s")]
+    #[case("i64.le_u")]
+    #[case("i64.ge_s")]
+    #[case("i64.ge_u")]
+    fn i64_logic(#[case] name: &str) {
+        compile::<(i64, i64), i32, (), ()>(
+            &format!(
+                "
+(module
+  (func (export {name:?}) (param i64 i64) (result i32)
+    ({name}
+      (local.get 0)
+      (local.get 1))))
+"
+            ),
+            name,
+        );
+    }
+
+    #[rstest]
+    #[case("f32.eq")]
+    #[case("f32.ne")]
+    #[case("f32.lt")]
+    #[case("f32.gt")]
+    #[case("f32.le")]
+    #[case("f32.ge")]
+    fn f32_logic(#[case] name: &str) {
+        compile::<(f32, f32), i32, (f32, f32), ()>(
+            &format!(
+                "
+(module
+  (func (export {name:?}) (param f32 f32) (result i32)
+    ({name}
+      (local.get 0)
+      (local.get 1))))
+"
+            ),
+            name,
+        );
+    }
+
+    #[rstest]
+    #[case("f64.eq")]
+    #[case("f64.ne")]
+    #[case("f64.lt")]
+    #[case("f64.gt")]
+    #[case("f64.le")]
+    #[case("f64.ge")]
+    fn f64_logic(#[case] name: &str) {
+        compile::<(f64, f64), i32, (f64, f64), ()>(
+            &format!(
+                "
+(module
+  (func (export {name:?}) (param f64 f64) (result i32)
+    ({name}
+      (local.get 0)
+      (local.get 1))))
+"
+            ),
+            name,
+        );
+    }
+
+    #[test]
+    fn test_i32_clz() {
+        Backprop {
+            wat: include_str!("wat/i32_clz.wat"),
+            name: "clz",
+            input: 42,
+            output: 26,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_ctz() {
+        Backprop {
+            wat: include_str!("wat/i32_ctz.wat"),
+            name: "ctz",
+            input: 8388608,
+            output: 23,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_popcnt() {
+        Backprop {
+            wat: include_str!("wat/i32_popcnt.wat"),
+            name: "popcnt",
+            input: 42,
+            output: 3,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_add() {
+        Backprop {
+            wat: include_str!("wat/i32_add.wat"),
+            name: "add",
+            input: (2, 3),
+            output: 5,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_sub() {
+        Backprop {
+            wat: include_str!("wat/i32_sub.wat"),
+            name: "sub",
+            input: (5, 3),
+            output: 2,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_mul() {
+        Backprop {
+            wat: include_str!("wat/i32_mul.wat"),
+            name: "mul",
+            input: (6, 7),
+            output: 42,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_div_s() {
+        Backprop {
+            wat: include_str!("wat/i32_div_s.wat"),
+            name: "div_s",
+            input: (7, 2),
+            output: 3,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_div_u() {
+        Backprop {
+            wat: include_str!("wat/i32_div_u.wat"),
+            name: "div_u",
+            input: (7, 2),
+            output: 3,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_rem_s() {
+        Backprop {
+            wat: include_str!("wat/i32_rem_s.wat"),
+            name: "rem_s",
+            input: (7, 2),
+            output: 1,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_rem_u() {
+        Backprop {
+            wat: include_str!("wat/i32_rem_u.wat"),
+            name: "rem_u",
+            input: (7, 2),
+            output: 1,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_and() {
+        Backprop {
+            wat: include_str!("wat/i32_and.wat"),
+            name: "and",
+            input: (3, 2),
+            output: 2,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_or() {
+        Backprop {
+            wat: include_str!("wat/i32_or.wat"),
+            name: "or",
+            input: (3, 2),
+            output: 3,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_xor() {
+        Backprop {
+            wat: include_str!("wat/i32_xor.wat"),
+            name: "xor",
+            input: (3, 2),
+            output: 1,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_shl() {
+        Backprop {
+            wat: include_str!("wat/i32_shl.wat"),
+            name: "shl",
+            input: (1, 2),
+            output: 4,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_shr_s() {
+        Backprop {
+            wat: include_str!("wat/i32_shr_s.wat"),
+            name: "shr_s",
+            input: (-4, 1),
+            output: -2,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_shr_u() {
+        Backprop {
+            wat: include_str!("wat/i32_shr_u.wat"),
+            name: "shr_u",
+            input: (4, 1),
+            output: 2,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_rotl() {
+        Backprop {
+            wat: include_str!("wat/i32_rotl.wat"),
+            name: "rotl",
+            input: (0x12345678, 4),
+            output: 0x23456781,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i32_rotr() {
+        Backprop {
+            wat: include_str!("wat/i32_rotr.wat"),
+            name: "rotr",
+            input: (0x12345678, 4),
+            output: 0x81234567u32 as i32,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_clz() {
+        Backprop {
+            wat: include_str!("wat/i64_clz.wat"),
+            name: "clz",
+            input: 42i64,
+            output: 58i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_ctz() {
+        Backprop {
+            wat: include_str!("wat/i64_ctz.wat"),
+            name: "ctz",
+            input: 8388608i64,
+            output: 23i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_popcnt() {
+        Backprop {
+            wat: include_str!("wat/i64_popcnt.wat"),
+            name: "popcnt",
+            input: 42i64,
+            output: 3i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_add() {
+        Backprop {
+            wat: include_str!("wat/i64_add.wat"),
+            name: "add",
+            input: (2i64, 3i64),
+            output: 5i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_sub() {
+        Backprop {
+            wat: include_str!("wat/i64_sub.wat"),
+            name: "sub",
+            input: (5i64, 3i64),
+            output: 2i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_mul() {
+        Backprop {
+            wat: include_str!("wat/i64_mul.wat"),
+            name: "mul",
+            input: (6i64, 7i64),
+            output: 42i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_div_s() {
+        Backprop {
+            wat: include_str!("wat/i64_div_s.wat"),
+            name: "div_s",
+            input: (7i64, 2i64),
+            output: 3i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_div_u() {
+        Backprop {
+            wat: include_str!("wat/i64_div_u.wat"),
+            name: "div_u",
+            input: (7i64, 2i64),
+            output: 3i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_rem_s() {
+        Backprop {
+            wat: include_str!("wat/i64_rem_s.wat"),
+            name: "rem_s",
+            input: (7i64, 2i64),
+            output: 1i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_rem_u() {
+        Backprop {
+            wat: include_str!("wat/i64_rem_u.wat"),
+            name: "rem_u",
+            input: (7i64, 2i64),
+            output: 1i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_and() {
+        Backprop {
+            wat: include_str!("wat/i64_and.wat"),
+            name: "and",
+            input: (3i64, 2i64),
+            output: 2i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_or() {
+        Backprop {
+            wat: include_str!("wat/i64_or.wat"),
+            name: "or",
+            input: (3i64, 2i64),
+            output: 3i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_xor() {
+        Backprop {
+            wat: include_str!("wat/i64_xor.wat"),
+            name: "xor",
+            input: (3i64, 2i64),
+            output: 1i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_shl() {
+        Backprop {
+            wat: include_str!("wat/i64_shl.wat"),
+            name: "shl",
+            input: (1i64, 2i64),
+            output: 4i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_shr_s() {
+        Backprop {
+            wat: include_str!("wat/i64_shr_s.wat"),
+            name: "shr_s",
+            input: (-4i64, 1i64),
+            output: -2i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_shr_u() {
+        Backprop {
+            wat: include_str!("wat/i64_shr_u.wat"),
+            name: "shr_u",
+            input: (4i64, 1i64),
+            output: 2i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_rotl() {
+        Backprop {
+            wat: include_str!("wat/i64_rotl.wat"),
+            name: "rotl",
+            input: (0x1234567812345678i64, 4i64),
+            output: 0x2345678123456781i64,
+            cotangent: (),
+            gradient: (),
+        }
+        .test()
+    }
+
+    #[test]
+    fn test_i64_rotr() {
+        Backprop {
+            wat: include_str!("wat/i64_rotr.wat"),
+            name: "rotr",
+            input: (0x1234567812345678i64, 4i64),
+            output: 0x8123456781234567u64 as i64,
+            cotangent: (),
+            gradient: (),
         }
         .test()
     }

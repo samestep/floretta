@@ -18,6 +18,7 @@ names = []
 
 [dev-dependencies]
 goldenfile = { workspace = true }
+rstest = { workspace = true }
 wasmprinter = { workspace = true }
 wasmtime = { workspace = true }
 wat = { workspace = true }
