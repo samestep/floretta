@@ -772,6 +772,19 @@ fn test_i64_rotr() {
 }
 
 #[test]
+fn test_f32_neg() {
+    Backprop {
+        wat: include_str!("../wat/f32_neg.wat"),
+        name: "neg",
+        input: 3.0f32,
+        output: -3.0f32,
+        cotangent: 1.0f32,
+        gradient: -1.0f32,
+    }
+    .test()
+}
+
+#[test]
 fn test_f32_add() {
     Backprop {
         wat: include_str!("../wat/f32_add.wat"),
@@ -819,6 +832,19 @@ fn test_f32_div() {
         output: 1.5f32,
         cotangent: 1.0f32,
         gradient: (0.5f32, -0.75f32),
+    }
+    .test()
+}
+
+#[test]
+fn test_f64_neg() {
+    Backprop {
+        wat: include_str!("../wat/f64_neg.wat"),
+        name: "neg",
+        input: 3.,
+        output: -3.,
+        cotangent: 1.,
+        gradient: -1.,
     }
     .test()
 }

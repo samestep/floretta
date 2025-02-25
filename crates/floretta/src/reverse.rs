@@ -893,6 +893,12 @@ impl Func {
                 self.push_i64();
                 self.fwd.instructions().i64_rotr();
             }
+            Operator::F32Neg => {
+                self.pop();
+                self.push_f32();
+                self.fwd.instructions().f32_neg();
+                self.bwd.instructions(|insn| insn.f32_neg());
+            }
             Operator::F32Add => {
                 self.pop2();
                 self.push_f32();
@@ -921,6 +927,12 @@ impl Func {
                 self.push_f32();
                 self.fwd.instructions().call(FUNC_F32_DIV_FWD);
                 self.bwd.instructions(|insn| insn.call(FUNC_F32_DIV_BWD));
+            }
+            Operator::F64Neg => {
+                self.pop();
+                self.push_f64();
+                self.fwd.instructions().f64_neg();
+                self.bwd.instructions(|insn| insn.f64_neg());
             }
             Operator::F64Add => {
                 self.pop2();
