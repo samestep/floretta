@@ -348,6 +348,8 @@ pub fn name_section(functions: impl FuncInfo, names: Option<Names>) -> NameSecti
             locals.append(i, &local_names.insert(&format!("result_{i}")));
         }
         let mut local_index = num_float_results + functions.locals(index).count();
+        locals.append(local_index, &local_names.insert("tmp_f32"));
+        local_index += 1;
         locals.append(local_index, &local_names.insert("tmp_f64"));
         local_index += 1;
         let stack_locals = functions.stack_locals(index);

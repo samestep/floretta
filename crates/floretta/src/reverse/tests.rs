@@ -772,6 +772,32 @@ fn test_i64_rotr() {
 }
 
 #[test]
+fn test_f32_add() {
+    Backprop {
+        wat: include_str!("../wat/f32_add.wat"),
+        name: "add",
+        input: (3.0f32, 2.0f32),
+        output: 5.0f32,
+        cotangent: 1.0f32,
+        gradient: (1.0f32, 1.0f32),
+    }
+    .test()
+}
+
+#[test]
+fn test_f32_sub() {
+    Backprop {
+        wat: include_str!("../wat/f32_sub.wat"),
+        name: "sub",
+        input: (3.0f32, 2.0f32),
+        output: 1.0f32,
+        cotangent: 1.0f32,
+        gradient: (1.0f32, -1.0f32),
+    }
+    .test()
+}
+
+#[test]
 fn test_f32_mul() {
     Backprop {
         wat: include_str!("../wat/f32_mul.wat"),
@@ -793,6 +819,32 @@ fn test_f32_div() {
         output: 1.5f32,
         cotangent: 1.0f32,
         gradient: (0.5f32, -0.75f32),
+    }
+    .test()
+}
+
+#[test]
+fn test_f64_add() {
+    Backprop {
+        wat: include_str!("../wat/f64_add.wat"),
+        name: "add",
+        input: (3., 2.),
+        output: 5.,
+        cotangent: 1.,
+        gradient: (1., 1.),
+    }
+    .test()
+}
+
+#[test]
+fn test_f64_sub() {
+    Backprop {
+        wat: include_str!("../wat/f64_sub.wat"),
+        name: "sub",
+        input: (3., 2.),
+        output: 1.,
+        cotangent: 1.,
+        gradient: (1., -1.),
     }
     .test()
 }

@@ -324,6 +324,7 @@ fn function(
     for (count, ty) in locals.vals() {
         bwd.locals(count, ty);
     }
+    let tmp_f32 = bwd.local(ValType::F32);
     let tmp_f64 = bwd.local(ValType::F64);
     // The first basic block in the forward pass corresponds to the last basic block in the backward
     // pass, and because each basic block will be reversed, the first instructions we write will
@@ -350,6 +351,7 @@ fn function(
         control_stack: Vec::new(),
         fwd,
         bwd,
+        tmp_f32,
         tmp_f64,
     };
     validator.check_operand_stack_height(0);
@@ -400,6 +402,9 @@ struct Func {
 
     /// The backward pass under construction.
     bwd: ReverseFunction,
+
+    /// Local index for an `f32` in the backward pass.
+    tmp_f32: u32,
 
     /// Local index for an `f64` in the backward pass.
     tmp_f64: u32,
@@ -888,6 +893,23 @@ impl Func {
                 self.push_i64();
                 self.fwd.instructions().i64_rotr();
             }
+            Operator::F32Add => {
+                self.pop2();
+                self.push_f32();
+                self.fwd.instructions().f32_add();
+                self.bwd
+                    .instructions(|insn| insn.local_tee(self.tmp_f32).local_get(self.tmp_f32));
+            }
+            Operator::F32Sub => {
+                self.pop2();
+                self.push_f32();
+                self.fwd.instructions().f32_sub();
+                self.bwd.instructions(|insn| {
+                    insn.local_tee(self.tmp_f32)
+                        .local_get(self.tmp_f32)
+                        .f32_neg()
+                });
+            }
             Operator::F32Mul => {
                 self.pop2();
                 self.push_f32();
@@ -899,6 +921,13 @@ impl Func {
                 self.push_f32();
                 self.fwd.instructions().call(FUNC_F32_DIV_FWD);
                 self.bwd.instructions(|insn| insn.call(FUNC_F32_DIV_BWD));
+            }
+            Operator::F64Add => {
+                self.pop2();
+                self.push_f64();
+                self.fwd.instructions().f64_add();
+                self.bwd
+                    .instructions(|insn| insn.local_tee(self.tmp_f64).local_get(self.tmp_f64));
             }
             Operator::F64Sub => {
                 self.pop2();
