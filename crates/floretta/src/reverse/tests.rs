@@ -785,6 +785,19 @@ fn test_f32_neg() {
 }
 
 #[test]
+fn test_f32_sqrt() {
+    Backprop {
+        wat: include_str!("../wat/f32_sqrt.wat"),
+        name: "sqrt",
+        input: 16.0f32,
+        output: 4.0f32,
+        cotangent: 1.0f32,
+        gradient: 0.125f32,
+    }
+    .test()
+}
+
+#[test]
 fn test_f32_add() {
     Backprop {
         wat: include_str!("../wat/f32_add.wat"),
@@ -871,6 +884,19 @@ fn test_f64_neg() {
         output: -3.,
         cotangent: 1.,
         gradient: -1.,
+    }
+    .test()
+}
+
+#[test]
+fn test_f64_sqrt() {
+    Backprop {
+        wat: include_str!("../wat/f64_sqrt.wat"),
+        name: "sqrt",
+        input: 16.,
+        output: 4.,
+        cotangent: 1.,
+        gradient: 0.125,
     }
     .test()
 }

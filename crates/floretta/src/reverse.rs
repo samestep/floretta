@@ -12,11 +12,12 @@ use crate::{
     Autodiff,
     helper::{
         FUNC_F32_DIV_BWD, FUNC_F32_DIV_FWD, FUNC_F32_MAX_BWD, FUNC_F32_MAX_FWD, FUNC_F32_MIN_BWD,
-        FUNC_F32_MIN_FWD, FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F64_DIV_BWD, FUNC_F64_DIV_FWD,
-        FUNC_F64_MAX_BWD, FUNC_F64_MAX_FWD, FUNC_F64_MIN_BWD, FUNC_F64_MIN_FWD, FUNC_F64_MUL_BWD,
-        FUNC_F64_MUL_FWD, FUNC_TAPE_I32, FUNC_TAPE_I32_BWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS,
-        OFFSET_MEMORIES, OFFSET_TYPES, TYPE_DISPATCH, helper_functions, helper_globals,
-        helper_memories, helper_types,
+        FUNC_F32_MIN_FWD, FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F32_SQRT_BWD, FUNC_F32_SQRT_FWD,
+        FUNC_F64_DIV_BWD, FUNC_F64_DIV_FWD, FUNC_F64_MAX_BWD, FUNC_F64_MAX_FWD, FUNC_F64_MIN_BWD,
+        FUNC_F64_MIN_FWD, FUNC_F64_MUL_BWD, FUNC_F64_MUL_FWD, FUNC_F64_SQRT_BWD, FUNC_F64_SQRT_FWD,
+        FUNC_TAPE_I32, FUNC_TAPE_I32_BWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES,
+        OFFSET_TYPES, TYPE_DISPATCH, helper_functions, helper_globals, helper_memories,
+        helper_types,
     },
     util::{FuncTypes, LocalMap, TypeMap, ValType, u32_to_usize},
     validate::{FunctionValidator, ModuleValidator},
@@ -833,6 +834,12 @@ impl Func {
                 self.fwd.instructions().f32_neg();
                 self.bwd.instructions(|insn| insn.f32_neg());
             }
+            Operator::F32Sqrt => {
+                self.pop();
+                self.push_f32();
+                self.fwd.instructions().call(FUNC_F32_SQRT_FWD);
+                self.bwd.instructions(|insn| insn.call(FUNC_F32_SQRT_BWD));
+            }
             Operator::F32Add => {
                 self.pop2();
                 self.push_f32();
@@ -879,6 +886,12 @@ impl Func {
                 self.push_f64();
                 self.fwd.instructions().f64_neg();
                 self.bwd.instructions(|insn| insn.f64_neg());
+            }
+            Operator::F64Sqrt => {
+                self.pop();
+                self.push_f64();
+                self.fwd.instructions().call(FUNC_F64_SQRT_FWD);
+                self.bwd.instructions(|insn| insn.call(FUNC_F64_SQRT_BWD));
             }
             Operator::F64Add => {
                 self.pop2();

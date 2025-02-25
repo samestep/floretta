@@ -2,16 +2,18 @@ use wasm_encoder::{
     BlockType, ConstExpr, FuncType, Function, GlobalType, MemArg, MemoryType, ValType,
 };
 
-pub const OFFSET_TYPES: u32 = 9;
+pub const OFFSET_TYPES: u32 = 11;
 pub const TYPE_DISPATCH: u32 = 0;
 const TYPE_TAPE_I32: u32 = 1;
 const TYPE_TAPE_I32_BWD: u32 = 2;
 const TYPE_F32_PAIR: u32 = 3;
-const TYPE_F32_BIN_FWD: u32 = 4;
-const TYPE_F32_BIN_BWD: u32 = 5;
-const TYPE_F64_PAIR: u32 = 6;
-const TYPE_F64_BIN_FWD: u32 = 7;
-const TYPE_F64_BIN_BWD: u32 = 8;
+const TYPE_F32_UNARY: u32 = 4;
+const TYPE_F32_BIN_FWD: u32 = 5;
+const TYPE_F32_BIN_BWD: u32 = 6;
+const TYPE_F64_PAIR: u32 = 7;
+const TYPE_F64_UNARY: u32 = 8;
+const TYPE_F64_BIN_FWD: u32 = 9;
+const TYPE_F64_BIN_BWD: u32 = 10;
 
 pub const OFFSET_MEMORIES: u32 = 3;
 const MEM_TAPE_ALIGN_1: u32 = 0;
@@ -23,25 +25,29 @@ const GLOBAL_TAPE_ALIGN_1: u32 = 0;
 const GLOBAL_TAPE_ALIGN_4: u32 = 1;
 const GLOBAL_TAPE_ALIGN_8: u32 = 2;
 
-pub const OFFSET_FUNCTIONS: u32 = 18;
+pub const OFFSET_FUNCTIONS: u32 = 22;
 pub const FUNC_TAPE_I32: u32 = 0;
 pub const FUNC_TAPE_I32_BWD: u32 = 1;
-pub const FUNC_F32_MUL_FWD: u32 = 2;
-pub const FUNC_F32_MUL_BWD: u32 = 3;
-pub const FUNC_F32_DIV_FWD: u32 = 4;
-pub const FUNC_F32_DIV_BWD: u32 = 5;
-pub const FUNC_F32_MIN_FWD: u32 = 6;
-pub const FUNC_F32_MIN_BWD: u32 = 7;
-pub const FUNC_F32_MAX_FWD: u32 = 8;
-pub const FUNC_F32_MAX_BWD: u32 = 9;
-pub const FUNC_F64_MUL_FWD: u32 = 10;
-pub const FUNC_F64_MUL_BWD: u32 = 11;
-pub const FUNC_F64_DIV_FWD: u32 = 12;
-pub const FUNC_F64_DIV_BWD: u32 = 13;
-pub const FUNC_F64_MIN_FWD: u32 = 14;
-pub const FUNC_F64_MIN_BWD: u32 = 15;
-pub const FUNC_F64_MAX_FWD: u32 = 16;
-pub const FUNC_F64_MAX_BWD: u32 = 17;
+pub const FUNC_F32_SQRT_FWD: u32 = 2;
+pub const FUNC_F32_SQRT_BWD: u32 = 3;
+pub const FUNC_F32_MUL_FWD: u32 = 4;
+pub const FUNC_F32_MUL_BWD: u32 = 5;
+pub const FUNC_F32_DIV_FWD: u32 = 6;
+pub const FUNC_F32_DIV_BWD: u32 = 7;
+pub const FUNC_F32_MIN_FWD: u32 = 8;
+pub const FUNC_F32_MIN_BWD: u32 = 9;
+pub const FUNC_F32_MAX_FWD: u32 = 10;
+pub const FUNC_F32_MAX_BWD: u32 = 11;
+pub const FUNC_F64_SQRT_FWD: u32 = 12;
+pub const FUNC_F64_SQRT_BWD: u32 = 13;
+pub const FUNC_F64_MUL_FWD: u32 = 14;
+pub const FUNC_F64_MUL_BWD: u32 = 15;
+pub const FUNC_F64_DIV_FWD: u32 = 16;
+pub const FUNC_F64_DIV_BWD: u32 = 17;
+pub const FUNC_F64_MIN_FWD: u32 = 18;
+pub const FUNC_F64_MIN_BWD: u32 = 19;
+pub const FUNC_F64_MAX_FWD: u32 = 20;
+pub const FUNC_F64_MAX_BWD: u32 = 21;
 
 pub fn helper_types() -> impl Iterator<Item = (&'static str, FuncType)> {
     [
@@ -58,6 +64,11 @@ pub fn helper_types() -> impl Iterator<Item = (&'static str, FuncType)> {
             FuncType::new([], [ValType::F32, ValType::F32]),
         ),
         (
+            TYPE_F32_UNARY,
+            "f32_unary",
+            FuncType::new([ValType::F32], [ValType::F32]),
+        ),
+        (
             TYPE_F32_BIN_FWD,
             "f32_bin",
             FuncType::new([ValType::F32, ValType::F32], [ValType::F32]),
@@ -71,6 +82,11 @@ pub fn helper_types() -> impl Iterator<Item = (&'static str, FuncType)> {
             TYPE_F64_PAIR,
             "f64_pair",
             FuncType::new([], [ValType::F64, ValType::F64]),
+        ),
+        (
+            TYPE_F64_UNARY,
+            "f64_unary",
+            FuncType::new([ValType::F64], [ValType::F64]),
         ),
         (
             TYPE_F64_BIN_FWD,
@@ -141,6 +157,18 @@ pub fn helper_functions() -> impl Iterator<Item = (&'static str, u32, Function)>
             func_tape_i32_bwd(),
         ),
         (
+            FUNC_F32_SQRT_FWD,
+            "f32_sqrt",
+            TYPE_F32_UNARY,
+            func_f32_sqrt_fwd(),
+        ),
+        (
+            FUNC_F32_SQRT_BWD,
+            "f32_sqrt_bwd",
+            TYPE_F32_UNARY,
+            func_f32_sqrt_bwd(),
+        ),
+        (
             FUNC_F32_MUL_FWD,
             "f32_mul",
             TYPE_F32_BIN_FWD,
@@ -187,6 +215,18 @@ pub fn helper_functions() -> impl Iterator<Item = (&'static str, u32, Function)>
             "f32_max_bwd",
             TYPE_F32_BIN_BWD,
             func_f32_max_bwd(),
+        ),
+        (
+            FUNC_F64_SQRT_FWD,
+            "f64_sqrt",
+            TYPE_F64_UNARY,
+            func_f64_sqrt_fwd(),
+        ),
+        (
+            FUNC_F64_SQRT_BWD,
+            "f64_sqrt_bwd",
+            TYPE_F64_UNARY,
+            func_f64_sqrt_bwd(),
         ),
         (
             FUNC_F64_MUL_FWD,
@@ -321,6 +361,55 @@ fn func_tape_i32_bwd() -> Function {
             align: 2,
             memory_index: MEM_TAPE_ALIGN_4,
         })
+        .end();
+    f
+}
+
+fn func_f32_sqrt_fwd() -> Function {
+    let [x, y, i, n] = [0, 1, 2, 3];
+    let mut f = Function::new([(1, ValType::F32), (2, ValType::I32)]);
+    Tape {
+        memory: MEM_TAPE_ALIGN_4,
+        global: GLOBAL_TAPE_ALIGN_4,
+        local: i,
+    }
+    .grow(&mut f, n, 4);
+    f.instructions()
+        .local_get(i)
+        .local_get(x)
+        .f32_sqrt()
+        .local_tee(y)
+        .f32_store(MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: MEM_TAPE_ALIGN_4,
+        })
+        .local_get(y)
+        .end();
+    f
+}
+
+fn func_f32_sqrt_bwd() -> Function {
+    let [dy, y, i] = [0, 1, 2];
+    let mut f = Function::new([(1, ValType::F32), (1, ValType::I32)]);
+    Tape {
+        memory: MEM_TAPE_ALIGN_4,
+        global: GLOBAL_TAPE_ALIGN_4,
+        local: i,
+    }
+    .shrink(&mut f, 4);
+    f.instructions()
+        .local_get(dy)
+        .local_get(i)
+        .f32_load(MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: MEM_TAPE_ALIGN_4,
+        })
+        .local_tee(y)
+        .local_get(y)
+        .f32_add()
+        .f32_div()
         .end();
     f
 }
@@ -552,6 +641,55 @@ fn func_f32_max_bwd() -> Function {
         .local_get(dz)
         .f32_const(0.)
         .end()
+        .end();
+    f
+}
+
+fn func_f64_sqrt_fwd() -> Function {
+    let [x, y, i, n] = [0, 1, 2, 3];
+    let mut f = Function::new([(1, ValType::F64), (2, ValType::I32)]);
+    Tape {
+        memory: MEM_TAPE_ALIGN_8,
+        global: GLOBAL_TAPE_ALIGN_8,
+        local: i,
+    }
+    .grow(&mut f, n, 8);
+    f.instructions()
+        .local_get(i)
+        .local_get(x)
+        .f64_sqrt()
+        .local_tee(y)
+        .f64_store(MemArg {
+            offset: 0,
+            align: 3,
+            memory_index: MEM_TAPE_ALIGN_8,
+        })
+        .local_get(y)
+        .end();
+    f
+}
+
+fn func_f64_sqrt_bwd() -> Function {
+    let [dy, y, i] = [0, 1, 2];
+    let mut f = Function::new([(1, ValType::F64), (1, ValType::I32)]);
+    Tape {
+        memory: MEM_TAPE_ALIGN_8,
+        global: GLOBAL_TAPE_ALIGN_8,
+        local: i,
+    }
+    .shrink(&mut f, 8);
+    f.instructions()
+        .local_get(dy)
+        .local_get(i)
+        .f64_load(MemArg {
+            offset: 0,
+            align: 3,
+            memory_index: MEM_TAPE_ALIGN_8,
+        })
+        .local_tee(y)
+        .local_get(y)
+        .f64_add()
+        .f64_div()
         .end();
     f
 }
