@@ -29,8 +29,8 @@ pub fn transform(
                 for ty in section.into_iter_err_on_gc_types() {
                     let typeidx = type_sigs.push(ty?)?;
                     types.ty().function(
-                        tuple(type_sigs.params(typeidx))?,
-                        tuple(type_sigs.results(typeidx))?,
+                        tuple(type_sigs.params(typeidx)),
+                        tuple(type_sigs.results(typeidx)),
                     );
                 }
             }
@@ -62,7 +62,8 @@ pub fn transform(
     Ok(module.finish())
 }
 
-fn tuple(val_types: &[ValType]) -> crate::Result<Vec<wasm_encoder::ValType>> {
+/// Duplicate all floating-point types.
+fn tuple(val_types: &[ValType]) -> Vec<wasm_encoder::ValType> {
     let mut types = Vec::new();
     for &ty in val_types {
         match ty {
@@ -74,7 +75,7 @@ fn tuple(val_types: &[ValType]) -> crate::Result<Vec<wasm_encoder::ValType>> {
             }
         }
     }
-    Ok(types)
+    types
 }
 
 fn function(
@@ -135,7 +136,7 @@ impl Func {
             Operator::LocalGet { local_index } => {
                 let i = self.local_index(local_index);
                 self.instructions().local_get(i);
-                if let ValType::F32 | ValType::F64 = self.local_type(local_index) {
+                if self.local_type(local_index).is_float() {
                     self.instructions().local_get(i + 1);
                 }
             }

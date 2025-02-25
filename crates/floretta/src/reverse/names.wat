@@ -6,7 +6,7 @@
   (type $f64_bin (;4;) (func (param f64 f64) (result f64)))
   (type $f32_bin_bwd (;5;) (func (param f32) (result f32 f32)))
   (type $f64_bin_bwd (;6;) (func (param f64) (result f64 f64)))
-  (type $my_type (;7;) (func (param f64) (result f64)))
+  (type $my_type (;7;) (func (param i32 f64) (result f64 i32)))
   (type $my_type_bwd (;8;) (func (param f64) (result f64)))
   (memory $tape_align_4 (;0;) 0)
   (memory $tape_align_8 (;1;) 0)
@@ -240,11 +240,12 @@
     f64.neg
     f64.mul
   )
-  (func $my_func (;10;) (type $my_type) (param $my_param f64) (result f64)
-    local.get $my_param
+  (func $my_func (;10;) (type $my_type) (param $my_int_param i32) (param $my_float_param f64) (result f64 i32)
+    local.get $my_float_param
+    local.get $my_int_param
   )
   (func $my_func_bwd (;11;) (type $my_type_bwd) (param $result_0 f64) (result f64)
-    (local $my_param f64) (local $tmp_f64 f64) (local $stack_f64_0 f64)
+    (local $my_float_param f64) (local $tmp_f64 f64) (local $stack_f64_0 f64)
     local.get $result_0
     local.set $stack_f64_0
     i32.const 0
@@ -259,9 +260,9 @@
     local.get $stack_f64_0
     f64.const 0x0p+0 (;=0;)
     local.set $stack_f64_0
-    local.get $my_param
+    local.get $my_float_param
     f64.add
-    local.set $my_param
-    local.get $my_param
+    local.set $my_float_param
+    local.get $my_float_param
   )
 )

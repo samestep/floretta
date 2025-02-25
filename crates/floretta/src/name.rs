@@ -17,6 +17,7 @@ use crate::{
         TYPE_TAPE_I32_BWD,
     },
     reverse::StackHeight,
+    util::LocalMap,
 };
 
 struct NameNumbers {
@@ -164,9 +165,9 @@ impl NameGen<'_> {
 pub trait FuncInfo {
     fn num_functions(&self) -> u32;
 
-    fn num_results(&self, funcidx: u32) -> u32;
+    fn num_float_results(&self, funcidx: u32) -> u32;
 
-    fn num_locals(&self, funcidx: u32) -> u32;
+    fn locals(&self, funcidx: u32) -> &LocalMap;
 
     fn stack_locals(&self, funcidx: u32) -> StackHeight;
 }
@@ -235,11 +236,14 @@ impl<'a> Names<'a> {
                             index,
                             names: locals_in,
                         } = function?;
-                        let num_results = functions.num_results(index);
+                        let num_float_results = functions.num_float_results(index);
+                        let local_map = functions.locals(index);
                         for local in locals_in {
                             let Naming { index, name } = local?;
                             locals_fwd.append(index, name);
-                            locals_bwd.append(num_results + index, name);
+                            if let (_, Some(i)) = local_map.get(index) {
+                                locals_bwd.append(num_float_results + i, name);
+                            }
                             local_names.insert(name);
                         }
                         locals_map.append(OFFSET_FUNCTIONS + 2 * index, &locals_fwd);
@@ -339,22 +343,14 @@ pub fn name_section(functions: impl FuncInfo, names: Option<Names>) -> NameSecti
         let (locals, local_names) = locals_maps
             .entry(index)
             .or_insert_with(|| (wasm_encoder::NameMap::new(), NameGen::default()));
-        let num_results = functions.num_results(index);
-        for i in 0..num_results {
+        let num_float_results = functions.num_float_results(index);
+        for i in 0..num_float_results {
             locals.append(i, &local_names.insert(&format!("result_{i}")));
         }
-        let mut local_index = num_results + functions.num_locals(index);
+        let mut local_index = num_float_results + functions.locals(index).count();
         locals.append(local_index, &local_names.insert("tmp_f64"));
         local_index += 1;
         let stack_locals = functions.stack_locals(index);
-        for i in 0..stack_locals.i32 {
-            locals.append(local_index, &local_names.insert(&format!("stack_i32_{i}")));
-            local_index += 1;
-        }
-        for i in 0..stack_locals.i64 {
-            locals.append(local_index, &local_names.insert(&format!("stack_i64_{i}")));
-            local_index += 1;
-        }
         for i in 0..stack_locals.f32 {
             locals.append(local_index, &local_names.insert(&format!("stack_f32_{i}")));
             local_index += 1;

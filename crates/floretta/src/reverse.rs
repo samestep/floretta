@@ -1,5 +1,3 @@
-use std::iter;
-
 use wasm_encoder::{
     CodeSection, Encode, ExportKind, ExportSection, Function, FunctionSection, GlobalSection,
     InstructionSink, MemorySection, Module, TypeSection,
@@ -16,7 +14,7 @@ use crate::{
         TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD, TYPE_TAPE_I32,
         TYPE_TAPE_I32_BWD, helpers,
     },
-    util::{FuncTypes, ValType, u32_to_usize},
+    util::{FuncTypes, LocalMap, TypeMap, ValType, u32_to_usize},
     validate::{FunctionValidator, ModuleValidator},
 };
 
@@ -131,15 +129,16 @@ pub fn transform(
                     let typeidx = type_sigs.push(ty?)?;
                     // Forward pass: same type as the original function. All the adjoint values are
                     // assumed to be zero.
-                    types.ty().func_type(&wasm_encoder::FuncType::new(
+                    types.ty().function(
                         type_sigs.params(typeidx).iter().map(|&ty| ty.into()),
                         type_sigs.results(typeidx).iter().map(|&ty| ty.into()),
-                    ));
+                    );
                     // Backward pass: results become parameters, and parameters become results.
-                    types.ty().func_type(&wasm_encoder::FuncType::new(
-                        type_sigs.results(typeidx).iter().map(|&ty| ty.into()),
-                        type_sigs.params(typeidx).iter().map(|&ty| ty.into()),
-                    ));
+                    // Also, integers disappear from function types in the backward pass.
+                    types.ty().function(
+                        tuple(type_sigs.results(typeidx)),
+                        tuple(type_sigs.params(typeidx)),
+                    );
                 }
             }
             Payload::FunctionSection(section) => {
@@ -241,11 +240,19 @@ pub fn transform(
     Ok(module.finish())
 }
 
+/// Remove all integer types for the backward pass.
+fn tuple(val_types: &[ValType]) -> Vec<wasm_encoder::ValType> {
+    val_types
+        .iter()
+        .filter_map(|&ty| if ty.is_float() { Some(ty.into()) } else { None })
+        .collect()
+}
+
 // When the `names` feature is disabled, this gets marked as dead code.
 #[allow(dead_code)]
 struct FunctionInfo {
     typeidx: u32,
-    locals: u32,
+    locals: LocalMap,
     stack_locals: StackHeight,
 }
 
@@ -255,16 +262,18 @@ impl crate::name::FuncInfo for (&FuncTypes, &[FunctionInfo]) {
         self.1.len().try_into().unwrap()
     }
 
-    fn num_results(&self, funcidx: u32) -> u32 {
+    fn num_float_results(&self, funcidx: u32) -> u32 {
         self.0
             .results(self.1[u32_to_usize(funcidx)].typeidx)
-            .len()
+            .iter()
+            .filter(|ty| ty.is_float())
+            .count()
             .try_into()
             .unwrap()
     }
 
-    fn num_locals(&self, funcidx: u32) -> u32 {
-        self.1[u32_to_usize(funcidx)].locals
+    fn locals(&self, funcidx: u32) -> &LocalMap {
+        &self.1[u32_to_usize(funcidx)].locals
     }
 
     fn stack_locals(&self, funcidx: u32) -> StackHeight {
@@ -281,23 +290,36 @@ fn function(
 ) -> crate::Result<(FunctionInfo, Vec<u8>, Vec<u8>)> {
     let typeidx = func_types[u32_to_usize(funcidx)];
     let params = type_sigs.params(typeidx);
-    let results = type_sigs.results(typeidx);
     let num_params: u32 = params.len().try_into().unwrap();
-    let num_results: u32 = results.len().try_into().unwrap();
-    let mut locals = params.to_vec();
+    let num_float_results: u32 = type_sigs
+        .results(typeidx)
+        .iter()
+        .filter(|ty| ty.is_float())
+        .count()
+        .try_into()
+        .unwrap();
+    let mut locals = LocalMap::new(TypeMap {
+        i32: 0,
+        i64: 0,
+        f32: 1,
+        f64: 1,
+    });
+    for &param in params {
+        locals.push(1, param);
+    }
     let mut locals_reader = body.get_locals_reader()?;
     for _ in 0..locals_reader.get_count() {
         let offset = locals_reader.original_position();
         let (count, ty) = locals_reader.read()?;
         validator.define_locals(offset, count, ty)?;
-        locals.extend(iter::repeat_n(ValType::try_from(ty)?, u32_to_usize(count)));
+        locals.push(count, ValType::try_from(ty)?);
     }
-    // TODO: Preserve compact encoding of locals from the original function.
-    let fwd =
-        Function::new_with_locals_types(locals.iter().skip(params.len()).map(|&ty| ty.into()));
-    let mut bwd = ReverseFunction::new(num_results);
-    for &local in &locals {
-        bwd.local(local);
+    // We added a single-local entry for each parameter from the original function type, so when we
+    // encode the rest of the locals, we need to skip over the parameters.
+    let fwd = Function::new(locals.keys().skip(params.len()));
+    let mut bwd = ReverseFunction::new(num_float_results);
+    for (count, ty) in locals.vals() {
+        bwd.locals(count, ty);
     }
     let tmp_f64 = bwd.local(ValType::F64);
     // The first basic block in the forward pass corresponds to the last basic block in the backward
@@ -310,11 +332,14 @@ fn function(
     // pushing the local corresponding to the last parameter first, then work downward to pushing
     // the first parameter on the bottom of the stack.
     for i in (0..num_params).rev() {
-        bwd.instructions(|insn| insn.local_get(num_results + i));
+        // Integer parameters disappear in the backward pass, so we skip them here.
+        if let (_, Some(j)) = locals.get(i) {
+            bwd.instructions(|insn| insn.local_get(num_float_results + j));
+        }
     }
     let mut func = Func {
-        num_results,
-        locals: &locals,
+        num_float_results,
+        locals,
         offset: 0, // This initial value should be unused; to be set before each instruction.
         operand_stack: Vec::new(),
         operand_stack_height: StackHeight::new(),
@@ -339,7 +364,7 @@ fn function(
     Ok((
         FunctionInfo {
             typeidx,
-            locals: locals.len().try_into().unwrap(),
+            locals: func.locals,
             stack_locals: func.bwd.max_stack_heights,
         },
         func.fwd.into_raw_body(),
@@ -347,12 +372,13 @@ fn function(
     ))
 }
 
-struct Func<'a> {
-    /// Number of results in the original function type.
-    num_results: u32,
+struct Func {
+    /// Number of floating-point results in the original function type.
+    num_float_results: u32,
 
-    /// Locals in the original function.
-    locals: &'a [ValType],
+    /// Types of locals from the original function, and indices in the backward pass that have been
+    /// mapped except for accounting for `num_results`.
+    locals: LocalMap,
 
     /// The current byte offset in the original function body.
     offset: u32,
@@ -376,7 +402,7 @@ struct Func<'a> {
     tmp_f64: u32,
 }
 
-impl Func<'_> {
+impl Func {
     /// Process an instruction.
     fn instruction(&mut self, op: Operator<'_>) -> crate::Result<()> {
         match op {
@@ -407,42 +433,46 @@ impl Func<'_> {
             Operator::BrIf { relative_depth } => {
                 self.pop();
                 self.fwd_control_store();
-                self.bwd.instructions(|insn| insn.i32_const(0));
                 self.end_basic_block();
                 self.fwd.instructions().br_if(relative_depth);
             }
             Operator::LocalGet { local_index } => {
-                let ty = self.local(local_index);
+                let (ty, i) = self.local(local_index);
                 self.push(ty);
                 self.fwd.instructions().local_get(local_index);
-                let i = self.bwd_local(local_index);
                 match ty {
-                    ValType::I32 | ValType::I64 => {
-                        self.bwd.instructions(|insn| insn.drop());
-                    }
+                    ValType::I32 | ValType::I64 => {}
                     ValType::F32 => {
+                        let i = i.unwrap();
                         self.bwd
                             .instructions(|insn| insn.local_get(i).f32_add().local_set(i));
                     }
                     ValType::F64 => {
+                        let i = i.unwrap();
                         self.bwd
                             .instructions(|insn| insn.local_get(i).f64_add().local_set(i));
                     }
                 }
             }
             Operator::LocalTee { local_index } => {
-                let ty = self.local(local_index);
+                let (ty, i) = self.local(local_index);
                 self.pop();
                 self.push(ty);
                 self.fwd.instructions().local_tee(local_index);
-                let i = self.bwd_local(local_index);
                 match ty {
+                    ValType::I32 | ValType::I64 => {}
+                    ValType::F32 => {
+                        let i = i.unwrap();
+                        self.bwd.instructions(|insn| {
+                            insn.local_get(i).f32_add().f32_const(0.).local_set(i)
+                        });
+                    }
                     ValType::F64 => {
+                        let i = i.unwrap();
                         self.bwd.instructions(|insn| {
                             insn.local_get(i).f64_add().f64_const(0.).local_set(i)
                         });
                     }
-                    _ => todo!(),
                 }
             }
             Operator::F64Const { value } => {
@@ -455,7 +485,7 @@ impl Func<'_> {
                 self.push_i32();
                 self.fwd.instructions().f64_ge();
                 self.bwd
-                    .instructions(|insn| insn.drop().f64_const(0.).f64_const(0.));
+                    .instructions(|insn| insn.f64_const(0.).f64_const(0.));
             }
             Operator::F32Mul => {
                 self.pop2();
@@ -529,12 +559,9 @@ impl Func<'_> {
         self.pop();
     }
 
-    fn local(&self, index: u32) -> ValType {
-        self.locals[u32_to_usize(index)]
-    }
-
-    fn bwd_local(&self, index: u32) -> u32 {
-        self.num_results + index
+    fn local(&self, index: u32) -> (ValType, Option<u32>) {
+        let (ty, mapped) = self.locals.get(index);
+        (ty, mapped.map(|i| self.num_float_results + i))
     }
 
     /// In the forward pass, store the current basic block index on the tape.
@@ -554,31 +581,15 @@ impl Func<'_> {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct StackHeight {
-    pub i32: u32,
-    pub i64: u32,
-    pub f32: u32,
-    pub f64: u32,
-}
+pub type StackHeight = TypeMap<u32>;
 
 impl StackHeight {
     fn new() -> Self {
-        Self {
-            i32: 0,
-            i64: 0,
-            f32: 0,
-            f64: 0,
-        }
+        Self::default()
     }
 
     fn counter(&mut self, ty: ValType) -> &mut u32 {
-        match ty {
-            ValType::I32 => &mut self.i32,
-            ValType::I64 => &mut self.i64,
-            ValType::F32 => &mut self.f32,
-            ValType::F64 => &mut self.f64,
-        }
+        self.get_mut(ty)
     }
 
     fn push(&mut self, ty: ValType) {
@@ -685,6 +696,10 @@ impl ReverseFunction {
         }
     }
 
+    fn locals(&mut self, count: u32, ty: ValType) {
+        self.locals.locals(count, ty);
+    }
+
     fn local(&mut self, ty: ValType) -> u32 {
         self.locals.local(ty)
     }
@@ -722,12 +737,11 @@ impl ReverseFunction {
 
     fn into_raw_body(mut self, operand_stack: &[ValType]) -> Vec<u8> {
         let local_count = self.locals.count();
-        // When we cross a basic block boundary in the backward pass, everything on the stack needs
-        // to be put into locals so that they can be retrieved after the `loop` dispatches to a
-        // given basic block. We've kept track of the maximum number of values in the stack for each
-        // type at each basic block boundary, so now we allocate enough locals to store them all.
-        self.locals.locals(self.max_stack_heights.i32, ValType::I32);
-        self.locals.locals(self.max_stack_heights.i64, ValType::I64);
+        // When we cross a basic block boundary in the backward pass, all floating-point values on
+        // the stack need to be put into locals so that they can be retrieved after the `loop`
+        // dispatches to a given basic block. We've kept track of the maximum number of values in
+        // the stack for each type at each basic block boundary, so now we allocate enough locals to
+        // store them all.
         self.locals.locals(self.max_stack_heights.f32, ValType::F32);
         self.locals.locals(self.max_stack_heights.f64, ValType::F64);
         let mut body = Vec::new();
@@ -754,9 +768,10 @@ struct ReverseReverseFunction {
 impl ReverseReverseFunction {
     fn consume(mut self, operand_stack: &[ValType]) -> Vec<u8> {
         let mut operand_stack_height = StackHeight::new();
-        for (i, &ty) in (0..).zip(operand_stack.iter()) {
+        // Integers disappear in the backward pass.
+        for (i, &ty) in (0..).zip(operand_stack.iter().filter(|&ty| ty.is_float())) {
             self.instructions().local_get(i);
-            let j = self.local_index_raw(operand_stack_height, ty);
+            let j = self.local_index_raw(operand_stack_height, ty).unwrap();
             self.instructions().local_set(j);
             operand_stack_height.push(ty);
         }
@@ -818,16 +833,17 @@ impl ReverseReverseFunction {
         let n = self.body.len();
         for &ty in self.func.stacks[stack_mid..stack_end].iter().rev() {
             self.operand_stack_height.pop(ty);
-            let i = self.local_index(ty);
-            reverse_encode(&mut self.body, |insn| insn.local_set(i));
-            // TODO: Only set stack locals to zero when they won't be overwritten later anyway.
-            match ty {
-                ValType::I32 => reverse_encode(&mut self.body, |insn| insn.i32_const(0)),
-                ValType::I64 => reverse_encode(&mut self.body, |insn| insn.i64_const(0)),
-                ValType::F32 => reverse_encode(&mut self.body, |insn| insn.f32_const(0.)),
-                ValType::F64 => reverse_encode(&mut self.body, |insn| insn.f64_const(0.)),
+            // Integers disappear in the backward pass.
+            if let Some(i) = self.local_index(ty) {
+                reverse_encode(&mut self.body, |insn| insn.local_set(i));
+                // TODO: Only set stack locals to zero when they won't be overwritten later anyway.
+                match ty {
+                    ValType::I32 | ValType::I64 => unreachable!(),
+                    ValType::F32 => reverse_encode(&mut self.body, |insn| insn.f32_const(0.)),
+                    ValType::F64 => reverse_encode(&mut self.body, |insn| insn.f64_const(0.)),
+                }
+                reverse_encode(&mut self.body, |insn| insn.local_get(i));
             }
-            reverse_encode(&mut self.body, |insn| insn.local_get(i));
         }
         self.body[n..].reverse();
         self.body
@@ -838,8 +854,10 @@ impl ReverseReverseFunction {
         // everything for operand stack bookkeeping.
         let n = self.body.len();
         for &ty in self.func.stacks[stack_start..stack_mid].iter().rev() {
-            let i = self.local_index(ty);
-            reverse_encode(&mut self.body, |insn| insn.local_set(i));
+            // Integers disappear in the backward pass.
+            if let Some(i) = self.local_index(ty) {
+                reverse_encode(&mut self.body, |insn| insn.local_set(i));
+            }
             self.operand_stack_height.push(ty);
         }
         self.body[n..].reverse();
@@ -849,27 +867,17 @@ impl ReverseReverseFunction {
         InstructionSink::new(&mut self.body)
     }
 
-    fn local_index(&self, ty: ValType) -> u32 {
+    fn local_index(&self, ty: ValType) -> Option<u32> {
         self.local_index_raw(self.operand_stack_height, ty)
     }
 
-    fn local_index_raw(&self, operand_stack_height: StackHeight, ty: ValType) -> u32 {
+    fn local_index_raw(&self, operand_stack_height: StackHeight, ty: ValType) -> Option<u32> {
         let i = match ty {
-            ValType::I32 => operand_stack_height.i32,
-            ValType::I64 => operand_stack_height.i64 + self.func.max_stack_heights.i32,
-            ValType::F32 => {
-                operand_stack_height.f32
-                    + self.func.max_stack_heights.i64
-                    + self.func.max_stack_heights.i32
-            }
-            ValType::F64 => {
-                operand_stack_height.f64
-                    + self.func.max_stack_heights.f32
-                    + self.func.max_stack_heights.i64
-                    + self.func.max_stack_heights.i32
-            }
+            ValType::I32 | ValType::I64 => return None,
+            ValType::F32 => operand_stack_height.f32,
+            ValType::F64 => operand_stack_height.f64 + self.func.max_stack_heights.f32,
         };
-        self.local_count + i
+        Some(self.local_count + i)
     }
 }
 
@@ -942,17 +950,14 @@ mod tests {
             .get_typed_func::<(i32, f64, i64, f32), (f32, i32, f64, i64)>(&mut store, "tuple")
             .unwrap();
         let bwd = instance
-            .get_typed_func::<(f32, i32, f64, i64), (i32, f64, i64, f32)>(&mut store, "backprop")
+            .get_typed_func::<(f32, f64), (f64, f32)>(&mut store, "backprop")
             .unwrap();
 
         assert_eq!(
             fwd.call(&mut store, (1, 2., 3, 4.)).unwrap(),
             (4., 1, 2., 3),
         );
-        assert_eq!(
-            bwd.call(&mut store, (5., 6, 7., 8)).unwrap(),
-            (0, 7., 0, 5.),
-        );
+        assert_eq!(bwd.call(&mut store, (5., 6.)).unwrap(), (6., 5.));
     }
 
     #[test]

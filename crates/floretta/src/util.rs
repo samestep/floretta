@@ -5,12 +5,18 @@ pub fn u32_to_usize(n: u32) -> usize {
         .expect("pointer size is assumed to be at least 32 bits")
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ValType {
     I32,
     I64,
     F32,
     F64,
+}
+
+impl ValType {
+    pub fn is_float(self) -> bool {
+        matches!(self, ValType::F32 | ValType::F64)
+    }
 }
 
 impl TryFrom<wasmparser::ValType> for ValType {
@@ -98,5 +104,171 @@ impl FuncTypes {
             }
             None => &self.val_types[i..],
         }
+    }
+}
+
+/// A map whose keys are Wasm types.
+#[derive(Clone, Copy, Default)]
+pub struct TypeMap<T> {
+    pub i32: T,
+    pub i64: T,
+    pub f32: T,
+    pub f64: T,
+}
+
+impl<T> TypeMap<T> {
+    /// Get a reference to the value associated with a Wasm type.
+    pub fn get(&self, ty: ValType) -> &T {
+        match ty {
+            ValType::I32 => &self.i32,
+            ValType::I64 => &self.i64,
+            ValType::F32 => &self.f32,
+            ValType::F64 => &self.f64,
+        }
+    }
+
+    /// Get a mutable reference to the value associated with a Wasm type.
+    pub fn get_mut(&mut self, ty: ValType) -> &mut T {
+        match ty {
+            ValType::I32 => &mut self.i32,
+            ValType::I64 => &mut self.i64,
+            ValType::F32 => &mut self.f32,
+            ValType::F64 => &mut self.f64,
+        }
+    }
+}
+
+/// Map local indices in a source function to local indices in a transformed function.
+pub struct LocalMap {
+    /// This type assumes that the mapping is simple: for each local as you iterate through the
+    /// locals from the source function in order, you allocate a constant number of locals in the
+    /// transformed function. This `type_map` says what that constant is for each type.
+    type_map: TypeMap<u32>,
+
+    /// Wasm locals are given in _entries_, each of which holds some _count_ of locals that all
+    /// share the same type. For each such entry, this `ends` vector holds the smallest index
+    /// greater than all the indices of that entry in both the source function and the transformed
+    /// function.
+    ends: Vec<(u32, u32)>,
+
+    /// For each entry, this vector holds the type of all the locals in that entry.
+    types: Vec<ValType>,
+}
+
+impl LocalMap {
+    /// Create a new map of locals.
+    pub fn new(type_map: TypeMap<u32>) -> Self {
+        Self {
+            type_map,
+            ends: Vec::new(),
+            types: Vec::new(),
+        }
+    }
+
+    /// Add an entry to the local map.
+    pub fn push(&mut self, count: u32, ty: ValType) {
+        let &(k, v) = self.ends.last().unwrap_or(&(0, 0));
+        let multiplier = *self.type_map.get(ty);
+        self.ends.push((k + count, v + multiplier * count));
+        self.types.push(ty);
+    }
+
+    /// Get the number of locals in the transformed function.
+    pub fn count(&self) -> u32 {
+        let &(_, end) = self.ends.last().unwrap_or(&(0, 0));
+        end
+    }
+
+    /// Get the type and mapped index of a local, given a local's `index` in the source function.
+    pub fn get(&self, index: u32) -> (ValType, Option<u32>) {
+        let i = self.ends.partition_point(|&(end, _)| end <= index);
+        let ty = self.types[i];
+        let (k, v) = match i.checked_sub(1) {
+            Some(j) => self.ends[j],
+            None => (0, 0),
+        };
+        let mapped = match self.type_map.get(ty) {
+            0 => None,
+            n => Some(v + n * (index - k)),
+        };
+        (ty, mapped)
+    }
+
+    /// Return an iterator over the source entries of the local map.
+    pub fn keys(&self) -> impl ExactSizeIterator<Item = (u32, wasm_encoder::ValType)> {
+        let mut start = 0;
+        self.ends
+            .iter()
+            .zip(self.types.iter())
+            .map(move |(&(end, _), &ty)| {
+                let count = end - start;
+                start = end;
+                (count, ty.into())
+            })
+    }
+
+    /// Return an iterator over the transformed entries of the local map.
+    pub fn vals(&self) -> impl ExactSizeIterator<Item = (u32, ValType)> {
+        let mut start = 0;
+        self.ends
+            .iter()
+            .zip(self.types.iter())
+            .map(move |(&(_, end), &ty)| {
+                let count = end - start;
+                start = end;
+                (count, ty)
+            })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::util::{LocalMap, TypeMap, ValType};
+
+    fn ones() -> TypeMap<u32> {
+        TypeMap {
+            i32: 1,
+            i64: 1,
+            f32: 1,
+            f64: 1,
+        }
+    }
+
+    #[test]
+    fn test_locals_map_zero() {
+        let mut locals = LocalMap::new(TypeMap { i32: 0, ..ones() });
+        locals.push(1, ValType::I32);
+        locals.push(1, ValType::F64);
+        assert_eq!(locals.get(0), (ValType::I32, None));
+        assert_eq!(locals.get(1), (ValType::F64, Some(0)));
+    }
+
+    #[test]
+    fn test_locals_entry_zero() {
+        let mut locals = LocalMap::new(ones());
+        locals.push(1, ValType::I32);
+        locals.push(0, ValType::I64);
+        locals.push(0, ValType::F32);
+        locals.push(1, ValType::F64);
+        assert_eq!(locals.get(0), (ValType::I32, Some(0)));
+        assert_eq!(locals.get(1), (ValType::F64, Some(1)));
+    }
+
+    #[test]
+    fn test_locals_entry_multiple() {
+        let mut type_map = ones();
+        type_map.i32 = 2;
+        let mut locals = LocalMap::new(type_map);
+        locals.push(3, ValType::F64);
+        locals.push(5, ValType::I32);
+        assert_eq!(locals.get(0), (ValType::F64, Some(0)));
+        assert_eq!(locals.get(1), (ValType::F64, Some(1)));
+        assert_eq!(locals.get(2), (ValType::F64, Some(2)));
+        assert_eq!(locals.get(3), (ValType::I32, Some(3)));
+        assert_eq!(locals.get(4), (ValType::I32, Some(5)));
+        assert_eq!(locals.get(5), (ValType::I32, Some(7)));
+        assert_eq!(locals.get(6), (ValType::I32, Some(9)));
+        assert_eq!(locals.get(7), (ValType::I32, Some(11)));
     }
 }
