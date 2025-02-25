@@ -78,6 +78,32 @@ fn test_square() {
 }
 
 #[test]
+fn test_local_set_f32() {
+    Backprop {
+        wat: include_str!("../wat/local_set_f32.wat"),
+        name: "clobber",
+        input: (1.0f32, 2.0f32),
+        output: (2.0f32, 2.0f32),
+        cotangent: (3.0f32, 4.0f32),
+        gradient: (0.0f32, 7.0f32),
+    }
+    .test()
+}
+
+#[test]
+fn test_local_set_f64() {
+    Backprop {
+        wat: include_str!("../wat/local_set_f64.wat"),
+        name: "clobber",
+        input: (1., 2.),
+        output: (2., 2.),
+        cotangent: (3., 4.),
+        gradient: (0., 7.),
+    }
+    .test()
+}
+
+#[test]
 fn test_tuple() {
     Backprop {
         wat: include_str!("../wat/tuple.wat"),

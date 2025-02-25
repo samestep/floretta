@@ -457,6 +457,24 @@ impl Func {
                     }
                 }
             }
+            Operator::LocalSet { local_index } => {
+                let (ty, i) = self.local(local_index);
+                self.pop();
+                self.fwd.instructions().local_set(local_index);
+                match ty {
+                    ValType::I32 | ValType::I64 => {}
+                    ValType::F32 => {
+                        let i = i.unwrap();
+                        self.bwd
+                            .instructions(|insn| insn.local_get(i).f32_const(0.).local_set(i));
+                    }
+                    ValType::F64 => {
+                        let i = i.unwrap();
+                        self.bwd
+                            .instructions(|insn| insn.local_get(i).f64_const(0.).local_set(i));
+                    }
+                }
+            }
             Operator::LocalTee { local_index } => {
                 let (ty, i) = self.local(local_index);
                 self.pop();
