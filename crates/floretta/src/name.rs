@@ -9,12 +9,8 @@ use wasmparser::{IndirectNaming, Name, NameSectionReader, Naming};
 
 use crate::{
     helper::{
-        FUNC_F32_DIV_BWD, FUNC_F32_DIV_FWD, FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F64_DIV_BWD,
-        FUNC_F64_DIV_FWD, FUNC_F64_MUL_BWD, FUNC_F64_MUL_FWD, FUNC_TAPE_I32, FUNC_TAPE_I32_BWD,
-        GLOBAL_TAPE_ALIGN_4, GLOBAL_TAPE_ALIGN_8, MEM_TAPE_ALIGN_4, MEM_TAPE_ALIGN_8,
-        OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES, TYPE_DISPATCH,
-        TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD, TYPE_TAPE_I32,
-        TYPE_TAPE_I32_BWD,
+        OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES, helper_functions,
+        helper_globals, helper_memories, helper_types,
     },
     reverse::StackHeight,
     util::LocalMap,
@@ -327,16 +323,9 @@ pub fn name_section(functions: impl FuncInfo, names: Option<Names>) -> NameSecti
         mut globals_gen,
     } = names.unwrap_or_default();
 
-    function_map.append(FUNC_TAPE_I32, &function_gen.insert("tape_i32"));
-    function_map.append(FUNC_TAPE_I32_BWD, &function_gen.insert("tape_i32_bwd"));
-    function_map.append(FUNC_F32_MUL_FWD, &function_gen.insert("f32_mul"));
-    function_map.append(FUNC_F32_DIV_FWD, &function_gen.insert("f32_div"));
-    function_map.append(FUNC_F64_MUL_FWD, &function_gen.insert("f64_mul"));
-    function_map.append(FUNC_F64_DIV_FWD, &function_gen.insert("f64_div"));
-    function_map.append(FUNC_F32_MUL_BWD, &function_gen.insert("f32_mul_bwd"));
-    function_map.append(FUNC_F32_DIV_BWD, &function_gen.insert("f32_div_bwd"));
-    function_map.append(FUNC_F64_MUL_BWD, &function_gen.insert("f64_mul_bwd"));
-    function_map.append(FUNC_F64_DIV_BWD, &function_gen.insert("f64_div_bwd"));
+    for (index, (name, ..)) in (0..).zip(helper_functions()) {
+        function_map.append(index, &function_gen.insert(name));
+    }
     section.functions(&function_map);
 
     for index in 0..functions.num_functions() {
@@ -365,21 +354,19 @@ pub fn name_section(functions: impl FuncInfo, names: Option<Names>) -> NameSecti
     }
     section.locals(&locals_map);
 
-    types_map.append(TYPE_DISPATCH, &types_gen.insert("dispatch"));
-    types_map.append(TYPE_TAPE_I32, &types_gen.insert("tape_i32"));
-    types_map.append(TYPE_TAPE_I32_BWD, &types_gen.insert("tape_i32_bwd"));
-    types_map.append(TYPE_F32_BIN_FWD, &types_gen.insert("f32_bin"));
-    types_map.append(TYPE_F32_BIN_BWD, &types_gen.insert("f32_bin_bwd"));
-    types_map.append(TYPE_F64_BIN_FWD, &types_gen.insert("f64_bin"));
-    types_map.append(TYPE_F64_BIN_BWD, &types_gen.insert("f64_bin_bwd"));
+    for (index, (name, ..)) in (0..).zip(helper_types()) {
+        types_map.append(index, &types_gen.insert(name));
+    }
     section.types(&types_map);
 
-    memories_map.append(MEM_TAPE_ALIGN_4, &memories_gen.insert("tape_align_4"));
-    memories_map.append(MEM_TAPE_ALIGN_8, &memories_gen.insert("tape_align_8"));
+    for (index, (name, ..)) in (0..).zip(helper_memories()) {
+        memories_map.append(index, &memories_gen.insert(name));
+    }
     section.memories(&memories_map);
 
-    globals_map.append(GLOBAL_TAPE_ALIGN_4, &globals_gen.insert("tape_align_4"));
-    globals_map.append(GLOBAL_TAPE_ALIGN_8, &globals_gen.insert("tape_align_8"));
+    for (index, (name, ..)) in (0..).zip(helper_globals()) {
+        globals_map.append(index, &globals_gen.insert(name));
+    }
     section.globals(&globals_map);
 
     section

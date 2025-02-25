@@ -837,6 +837,32 @@ fn test_f32_div() {
 }
 
 #[test]
+fn test_f32_min() {
+    Backprop {
+        wat: include_str!("../wat/f32_min.wat"),
+        name: "min",
+        input: (2.0f32, 3.0f32),
+        output: 2.0f32,
+        cotangent: 1.0f32,
+        gradient: (1.0f32, 0.0f32),
+    }
+    .test()
+}
+
+#[test]
+fn test_f32_max() {
+    Backprop {
+        wat: include_str!("../wat/f32_max.wat"),
+        name: "max",
+        input: (2.0f32, 3.0f32),
+        output: 3.0f32,
+        cotangent: 1.0f32,
+        gradient: (0.0f32, 1.0f32),
+    }
+    .test()
+}
+
+#[test]
 fn test_f64_neg() {
     Backprop {
         wat: include_str!("../wat/f64_neg.wat"),
@@ -897,6 +923,32 @@ fn test_f64_div() {
         output: 1.5,
         cotangent: 1.,
         gradient: (0.5, -0.75),
+    }
+    .test()
+}
+
+#[test]
+fn test_f64_min() {
+    Backprop {
+        wat: include_str!("../wat/f64_min.wat"),
+        name: "min",
+        input: (2., 3.),
+        output: 2.,
+        cotangent: 1.,
+        gradient: (1., 0.),
+    }
+    .test()
+}
+
+#[test]
+fn test_f64_max() {
+    Backprop {
+        wat: include_str!("../wat/f64_max.wat"),
+        name: "max",
+        input: (2., 3.),
+        output: 3.,
+        cotangent: 1.,
+        gradient: (0., 1.),
     }
     .test()
 }

@@ -68,11 +68,12 @@
 mod api;
 mod forward;
 mod helper;
-#[cfg(feature = "names")]
-mod name;
 mod reverse;
 mod util;
 mod validate;
+
+#[cfg(feature = "names")]
+mod name;
 
 use wasm_encoder::reencode;
 use wasmparser::{BinaryReaderError, Validator, WasmFeatures};

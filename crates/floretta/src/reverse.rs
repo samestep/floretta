@@ -11,11 +11,12 @@ use wasmparser::{FunctionBody, Operator, Parser, Payload};
 use crate::{
     Autodiff,
     helper::{
-        FUNC_F32_DIV_BWD, FUNC_F32_DIV_FWD, FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F64_DIV_BWD,
-        FUNC_F64_DIV_FWD, FUNC_F64_MUL_BWD, FUNC_F64_MUL_FWD, FUNC_TAPE_I32, FUNC_TAPE_I32_BWD,
-        OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES, TYPE_DISPATCH,
-        TYPE_F32_BIN_BWD, TYPE_F32_BIN_FWD, TYPE_F64_BIN_BWD, TYPE_F64_BIN_FWD, TYPE_TAPE_I32,
-        TYPE_TAPE_I32_BWD, helpers,
+        FUNC_F32_DIV_BWD, FUNC_F32_DIV_FWD, FUNC_F32_MAX_BWD, FUNC_F32_MAX_FWD, FUNC_F32_MIN_BWD,
+        FUNC_F32_MIN_FWD, FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F64_DIV_BWD, FUNC_F64_DIV_FWD,
+        FUNC_F64_MAX_BWD, FUNC_F64_MAX_FWD, FUNC_F64_MIN_BWD, FUNC_F64_MIN_FWD, FUNC_F64_MUL_BWD,
+        FUNC_F64_MUL_FWD, FUNC_TAPE_I32, FUNC_TAPE_I32_BWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS,
+        OFFSET_MEMORIES, OFFSET_TYPES, TYPE_DISPATCH, helper_functions, helper_globals,
+        helper_memories, helper_types,
     },
     util::{FuncTypes, LocalMap, TypeMap, ValType, u32_to_usize},
     validate::{FunctionValidator, ModuleValidator},
@@ -27,95 +28,28 @@ pub fn transform(
     wasm_module: &[u8],
 ) -> crate::Result<Vec<u8>> {
     let mut types = TypeSection::new();
-    // Type for control flow dispatch loop in the backward pass.
-    types.ty().func_type(&wasm_encoder::FuncType::new(
-        [wasm_encoder::ValType::I32],
-        [],
-    ));
-    // Type for storing a basic block index on the tape.
-    types.ty().func_type(&wasm_encoder::FuncType::new(
-        [wasm_encoder::ValType::I32],
-        [],
-    ));
-    // Type for loading a basic block index from the tape.
-    types.ty().func_type(&wasm_encoder::FuncType::new(
-        [],
-        [wasm_encoder::ValType::I32],
-    ));
-    // Forward-pass arithmetic helper function types to push floating-point values onto the tape.
-    types.ty().func_type(&wasm_encoder::FuncType::new(
-        [wasm_encoder::ValType::F32, wasm_encoder::ValType::F32],
-        [wasm_encoder::ValType::F32],
-    ));
-    types.ty().func_type(&wasm_encoder::FuncType::new(
-        [wasm_encoder::ValType::F64, wasm_encoder::ValType::F64],
-        [wasm_encoder::ValType::F64],
-    ));
-    // Backward-pass arithmetic helper function types to pop floating-point values from the tape.
-    types.ty().func_type(&wasm_encoder::FuncType::new(
-        [wasm_encoder::ValType::F32],
-        [wasm_encoder::ValType::F32, wasm_encoder::ValType::F32],
-    ));
-    types.ty().func_type(&wasm_encoder::FuncType::new(
-        [wasm_encoder::ValType::F64],
-        [wasm_encoder::ValType::F64, wasm_encoder::ValType::F64],
-    ));
-    assert_eq!(types.len(), OFFSET_TYPES);
     let mut functions = FunctionSection::new();
-    // Type indices for the tape helper functions.
-    functions.function(TYPE_TAPE_I32);
-    functions.function(TYPE_TAPE_I32_BWD);
-    functions.function(TYPE_F32_BIN_FWD);
-    functions.function(TYPE_F32_BIN_FWD);
-    functions.function(TYPE_F64_BIN_FWD);
-    functions.function(TYPE_F64_BIN_FWD);
-    functions.function(TYPE_F32_BIN_BWD);
-    functions.function(TYPE_F32_BIN_BWD);
-    functions.function(TYPE_F64_BIN_BWD);
-    functions.function(TYPE_F64_BIN_BWD);
-    assert_eq!(functions.len(), OFFSET_FUNCTIONS);
     let mut memories = MemorySection::new();
-    // The first two memories are always for the tape, so it is possible to translate function
-    // bodies without knowing the total number of memories.
-    memories.memory(wasm_encoder::MemoryType {
-        minimum: 0,
-        maximum: None,
-        memory64: false,
-        shared: false,
-        page_size_log2: None,
-    });
-    memories.memory(wasm_encoder::MemoryType {
-        minimum: 0,
-        maximum: None,
-        memory64: false,
-        shared: false,
-        page_size_log2: None,
-    });
-    assert_eq!(memories.len(), OFFSET_MEMORIES);
     let mut globals = GlobalSection::new();
-    // The first two globals are always the tape pointers.
-    globals.global(
-        wasm_encoder::GlobalType {
-            val_type: wasm_encoder::ValType::I32,
-            mutable: true,
-            shared: false,
-        },
-        &wasm_encoder::ConstExpr::i32_const(0),
-    );
-    globals.global(
-        wasm_encoder::GlobalType {
-            val_type: wasm_encoder::ValType::I32,
-            mutable: true,
-            shared: false,
-        },
-        &wasm_encoder::ConstExpr::i32_const(0),
-    );
-    assert_eq!(globals.len(), OFFSET_GLOBALS);
     let mut exports = ExportSection::new();
     let mut code = CodeSection::new();
-    for f in helpers() {
+    for (_, ty) in helper_types() {
+        types.ty().func_type(&ty);
+    }
+    for (_, memory) in helper_memories() {
+        memories.memory(memory);
+    }
+    for (_, ty, init) in helper_globals() {
+        globals.global(ty, &init);
+    }
+    for (_, i, f) in helper_functions() {
+        functions.function(i);
         code.function(&f);
     }
+    assert_eq!(types.len(), OFFSET_TYPES);
+    assert_eq!(memories.len(), OFFSET_MEMORIES);
+    assert_eq!(globals.len(), OFFSET_GLOBALS);
+    assert_eq!(functions.len(), OFFSET_FUNCTIONS);
     assert_eq!(code.len(), OFFSET_FUNCTIONS);
     let mut type_sigs = FuncTypes::new();
     let mut func_types = Vec::new();
@@ -928,6 +862,18 @@ impl Func {
                 self.fwd.instructions().call(FUNC_F32_DIV_FWD);
                 self.bwd.instructions(|insn| insn.call(FUNC_F32_DIV_BWD));
             }
+            Operator::F32Min => {
+                self.pop2();
+                self.push_f32();
+                self.fwd.instructions().call(FUNC_F32_MIN_FWD);
+                self.bwd.instructions(|insn| insn.call(FUNC_F32_MIN_BWD));
+            }
+            Operator::F32Max => {
+                self.pop2();
+                self.push_f32();
+                self.fwd.instructions().call(FUNC_F32_MAX_FWD);
+                self.bwd.instructions(|insn| insn.call(FUNC_F32_MAX_BWD));
+            }
             Operator::F64Neg => {
                 self.pop();
                 self.push_f64();
@@ -962,6 +908,18 @@ impl Func {
                 self.push_f64();
                 self.fwd.instructions().call(FUNC_F64_DIV_FWD);
                 self.bwd.instructions(|insn| insn.call(FUNC_F64_DIV_BWD));
+            }
+            Operator::F64Min => {
+                self.pop2();
+                self.push_f64();
+                self.fwd.instructions().call(FUNC_F64_MIN_FWD);
+                self.bwd.instructions(|insn| insn.call(FUNC_F64_MIN_BWD));
+            }
+            Operator::F64Max => {
+                self.pop2();
+                self.push_f64();
+                self.fwd.instructions().call(FUNC_F64_MAX_FWD);
+                self.bwd.instructions(|insn| insn.call(FUNC_F64_MAX_BWD));
             }
             _ => unimplemented!("{op:?}"),
         }
