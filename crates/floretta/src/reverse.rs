@@ -892,10 +892,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::{fmt, io::Write};
 
     use goldenfile::Mint;
-    use wasmtime::{Engine, Instance, Module, Store};
+    use wasmtime::{Engine, Instance, Module, Store, WasmParams, WasmResults};
 
     use crate::Autodiff;
 
@@ -911,167 +911,135 @@ mod tests {
         file.write_all(output.as_bytes()).unwrap();
     }
 
+    struct Backprop<P, R, DP, DR> {
+        wat: &'static str,
+        name: &'static str,
+        input: P,
+        output: R,
+        cotangent: DR,
+        gradient: DP,
+    }
+
+    impl<
+        P: fmt::Debug + PartialEq + WasmParams,
+        R: fmt::Debug + PartialEq + WasmResults,
+        DP: fmt::Debug + PartialEq + WasmResults,
+        DR: fmt::Debug + PartialEq + WasmParams,
+    > Backprop<P, R, DP, DR>
+    {
+        fn test(self) {
+            let input = wat::parse_str(self.wat).unwrap();
+
+            let mut ad = Autodiff::new();
+            ad.export(self.name, "backprop");
+            let output = ad.reverse(&input).unwrap();
+
+            let engine = Engine::default();
+            let mut store = Store::new(&engine, ());
+            let module = Module::new(&engine, &output).unwrap();
+            let instance = Instance::new(&mut store, &module, &[]).unwrap();
+            let square = instance
+                .get_typed_func::<P, R>(&mut store, self.name)
+                .unwrap();
+            let backprop = instance
+                .get_typed_func::<DR, DP>(&mut store, "backprop")
+                .unwrap();
+
+            let output = square.call(&mut store, self.input).unwrap();
+            assert_eq!(output, self.output);
+            let gradient = backprop.call(&mut store, self.cotangent).unwrap();
+            assert_eq!(gradient, self.gradient);
+        }
+    }
+
     #[test]
     fn test_square() {
-        let input = wat::parse_str(include_str!("wat/square.wat")).unwrap();
-
-        let mut ad = Autodiff::new();
-        ad.export("square", "backprop");
-        let output = ad.reverse(&input).unwrap();
-
-        let engine = Engine::default();
-        let mut store = Store::new(&engine, ());
-        let module = Module::new(&engine, &output).unwrap();
-        let instance = Instance::new(&mut store, &module, &[]).unwrap();
-        let square = instance
-            .get_typed_func::<f64, f64>(&mut store, "square")
-            .unwrap();
-        let backprop = instance
-            .get_typed_func::<f64, f64>(&mut store, "backprop")
-            .unwrap();
-
-        assert_eq!(square.call(&mut store, 3.).unwrap(), 9.);
-        assert_eq!(backprop.call(&mut store, 1.).unwrap(), 6.);
+        Backprop {
+            wat: include_str!("wat/square.wat"),
+            name: "square",
+            input: 3.,
+            output: 9.,
+            cotangent: 1.,
+            gradient: 6.,
+        }
+        .test()
     }
 
     #[test]
     fn test_tuple() {
-        let input = wat::parse_str(include_str!("wat/tuple.wat")).unwrap();
-
-        let mut ad = Autodiff::new();
-        ad.export("tuple", "backprop");
-        let output = ad.reverse(&input).unwrap();
-
-        let engine = Engine::default();
-        let mut store = Store::new(&engine, ());
-        let module = Module::new(&engine, &output).unwrap();
-        let instance = Instance::new(&mut store, &module, &[]).unwrap();
-        let fwd = instance
-            .get_typed_func::<(i32, f64, i64, f32), (f32, i32, f64, i64)>(&mut store, "tuple")
-            .unwrap();
-        let bwd = instance
-            .get_typed_func::<(f32, f64), (f64, f32)>(&mut store, "backprop")
-            .unwrap();
-
-        assert_eq!(
-            fwd.call(&mut store, (1, 2., 3, 4.)).unwrap(),
-            (4., 1, 2., 3),
-        );
-        assert_eq!(bwd.call(&mut store, (5., 6.)).unwrap(), (6., 5.));
+        Backprop {
+            wat: include_str!("wat/tuple.wat"),
+            name: "tuple",
+            input: (1i32, 2.0f64, 3i64, 4.0f32),
+            output: (4.0f32, 1i32, 2.0f64, 3i64),
+            cotangent: (5.0f32, 6.0f64),
+            gradient: (6.0f64, 5.0f32),
+        }
+        .test()
     }
 
     #[test]
     fn test_loop() {
-        let input = wat::parse_str(include_str!("wat/loop.wat")).unwrap();
-
-        let mut ad = Autodiff::new();
-        ad.export("loop", "backprop");
-        let output = ad.reverse(&input).unwrap();
-
-        let engine = Engine::default();
-        let mut store = Store::new(&engine, ());
-        let module = Module::new(&engine, &output).unwrap();
-        let instance = Instance::new(&mut store, &module, &[]).unwrap();
-        let fwd = instance
-            .get_typed_func::<f64, f64>(&mut store, "loop")
-            .unwrap();
-        let bwd = instance
-            .get_typed_func::<f64, f64>(&mut store, "backprop")
-            .unwrap();
-
-        assert_eq!(fwd.call(&mut store, 1.1).unwrap(), -0.99);
-        assert_eq!(bwd.call(&mut store, 1.).unwrap(), 0.20000000000000018);
+        Backprop {
+            wat: include_str!("wat/loop.wat"),
+            name: "loop",
+            input: 1.1,
+            output: -0.99,
+            cotangent: 1.,
+            gradient: 0.20000000000000018,
+        }
+        .test()
     }
 
     #[test]
     fn test_f32_mul() {
-        let input = wat::parse_str(include_str!("wat/f32_mul.wat")).unwrap();
-
-        let mut ad = Autodiff::new();
-        ad.export("mul", "backprop");
-        let output = ad.reverse(&input).unwrap();
-
-        let engine = Engine::default();
-        let mut store = Store::new(&engine, ());
-        let module = Module::new(&engine, &output).unwrap();
-        let instance = Instance::new(&mut store, &module, &[]).unwrap();
-        let fwd = instance
-            .get_typed_func::<(f32, f32), f32>(&mut store, "mul")
-            .unwrap();
-        let bwd = instance
-            .get_typed_func::<f32, (f32, f32)>(&mut store, "backprop")
-            .unwrap();
-
-        assert_eq!(fwd.call(&mut store, (3., 2.)).unwrap(), 6.);
-        assert_eq!(bwd.call(&mut store, 1.).unwrap(), (2., 3.));
+        Backprop {
+            wat: include_str!("wat/f32_mul.wat"),
+            name: "mul",
+            input: (3.0f32, 2.0f32),
+            output: 6.0f32,
+            cotangent: 1.0f32,
+            gradient: (2.0f32, 3.0f32),
+        }
+        .test()
     }
 
     #[test]
     fn test_f32_div() {
-        let input = wat::parse_str(include_str!("wat/f32_div.wat")).unwrap();
-
-        let mut ad = Autodiff::new();
-        ad.export("div", "backprop");
-        let output = ad.reverse(&input).unwrap();
-
-        let engine = Engine::default();
-        let mut store = Store::new(&engine, ());
-        let module = Module::new(&engine, &output).unwrap();
-        let instance = Instance::new(&mut store, &module, &[]).unwrap();
-        let fwd = instance
-            .get_typed_func::<(f32, f32), f32>(&mut store, "div")
-            .unwrap();
-        let bwd = instance
-            .get_typed_func::<f32, (f32, f32)>(&mut store, "backprop")
-            .unwrap();
-
-        assert_eq!(fwd.call(&mut store, (3., 2.)).unwrap(), 1.5);
-        assert_eq!(bwd.call(&mut store, 1.).unwrap(), (0.5, -0.75));
+        Backprop {
+            wat: include_str!("wat/f32_div.wat"),
+            name: "div",
+            input: (3.0f32, 2.0f32),
+            output: 1.5f32,
+            cotangent: 1.0f32,
+            gradient: (0.5f32, -0.75f32),
+        }
+        .test()
     }
 
     #[test]
     fn test_f64_mul() {
-        let input = wat::parse_str(include_str!("wat/f64_mul.wat")).unwrap();
-
-        let mut ad = Autodiff::new();
-        ad.export("mul", "backprop");
-        let output = ad.reverse(&input).unwrap();
-
-        let engine = Engine::default();
-        let mut store = Store::new(&engine, ());
-        let module = Module::new(&engine, &output).unwrap();
-        let instance = Instance::new(&mut store, &module, &[]).unwrap();
-        let fwd = instance
-            .get_typed_func::<(f64, f64), f64>(&mut store, "mul")
-            .unwrap();
-        let bwd = instance
-            .get_typed_func::<f64, (f64, f64)>(&mut store, "backprop")
-            .unwrap();
-
-        assert_eq!(fwd.call(&mut store, (3., 2.)).unwrap(), 6.);
-        assert_eq!(bwd.call(&mut store, 1.).unwrap(), (2., 3.));
+        Backprop {
+            wat: include_str!("wat/f64_mul.wat"),
+            name: "mul",
+            input: (3., 2.),
+            output: 6.,
+            cotangent: 1.,
+            gradient: (2., 3.),
+        }
+        .test()
     }
 
     #[test]
     fn test_f64_div() {
-        let input = wat::parse_str(include_str!("wat/f64_div.wat")).unwrap();
-
-        let mut ad = Autodiff::new();
-        ad.export("div", "backprop");
-        let output = ad.reverse(&input).unwrap();
-
-        let engine = Engine::default();
-        let mut store = Store::new(&engine, ());
-        let module = Module::new(&engine, &output).unwrap();
-        let instance = Instance::new(&mut store, &module, &[]).unwrap();
-        let fwd = instance
-            .get_typed_func::<(f64, f64), f64>(&mut store, "div")
-            .unwrap();
-        let bwd = instance
-            .get_typed_func::<f64, (f64, f64)>(&mut store, "backprop")
-            .unwrap();
-
-        assert_eq!(fwd.call(&mut store, (3., 2.)).unwrap(), 1.5);
-        assert_eq!(bwd.call(&mut store, 1.).unwrap(), (0.5, -0.75));
+        Backprop {
+            wat: include_str!("wat/f64_div.wat"),
+            name: "div",
+            input: (3., 2.),
+            output: 1.5,
+            cotangent: 1.,
+            gradient: (0.5, -0.75),
+        }
+        .test()
     }
 }
