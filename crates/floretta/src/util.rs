@@ -174,6 +174,7 @@ impl LocalMap {
     }
 
     /// Get the number of locals in the transformed function.
+    #[cfg(feature = "names")]
     pub fn count(&self) -> u32 {
         let &(_, end) = self.ends.last().unwrap_or(&(0, 0));
         end
