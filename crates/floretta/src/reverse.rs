@@ -6,7 +6,7 @@ use wasm_encoder::{
     InstructionSink, MemorySection, Module, TypeSection,
     reencode::{Reencode, RoundtripReencoder},
 };
-use wasmparser::{FunctionBody, Operator, Parser, Payload};
+use wasmparser::{FunctionBody, Global, Operator, Parser, Payload};
 
 use crate::{
     Autodiff,
@@ -103,10 +103,32 @@ pub fn transform(
             Payload::GlobalSection(section) => {
                 validator.global_section(&section)?;
                 for global in section {
-                    let g = global?;
+                    let Global { ty, init_expr } = global?;
+                    if ty.mutable {
+                        unimplemented!("mutable globals");
+                    }
+                    if ty.shared {
+                        unimplemented!("shared globals");
+                    }
+                    let mut ce = wasm_encoder::ConstExpr::empty();
+                    let mut reader = init_expr.get_operators_reader();
+                    while !reader.is_end_then_eof() {
+                        match reader.read()? {
+                            Operator::End => {}
+                            Operator::I32Const { value } => ce = ce.with_i32_const(value),
+                            Operator::I64Const { value } => ce = ce.with_i64_const(value),
+                            Operator::F32Const { value } => ce = ce.with_f32_const(value.into()),
+                            Operator::F64Const { value } => ce = ce.with_f64_const(value.into()),
+                            op => unimplemented!("{op:?}"),
+                        };
+                    }
                     globals.global(
-                        RoundtripReencoder.global_type(g.ty)?,
-                        &RoundtripReencoder.const_expr(g.init_expr)?,
+                        wasm_encoder::GlobalType {
+                            val_type: ValType::try_from(ty.content_type)?.into(),
+                            mutable: false,
+                            shared: false,
+                        },
+                        &ce,
                     );
                 }
             }
