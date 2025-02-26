@@ -566,6 +566,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "floretta-fidget"
+version = "0.4.0"
+dependencies = [
+ "clap",
+ "floretta",
+ "wasm-encoder 0.226.0",
+ "wasmtime",
+]
+
+[[package]]
 name = "floretta-wasm"
 version = "0.4.0"
 dependencies = [

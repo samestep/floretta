@@ -1,0 +1,11 @@
+[package]
+name = "floretta-fidget"
+publish = false
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+clap = { workspace = true }
+floretta = { workspace = true }
+wasm-encoder = { workspace = true }
+wasmtime = { workspace = true }
