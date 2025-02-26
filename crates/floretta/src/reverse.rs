@@ -114,7 +114,6 @@ pub fn transform(
                     let mut reader = init_expr.get_operators_reader();
                     while !reader.is_end_then_eof() {
                         match reader.read()? {
-                            Operator::End => {}
                             Operator::I32Const { value } => ce = ce.with_i32_const(value),
                             Operator::I64Const { value } => ce = ce.with_i64_const(value),
                             Operator::F32Const { value } => ce = ce.with_f32_const(value.into()),
