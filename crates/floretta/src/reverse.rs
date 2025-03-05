@@ -400,6 +400,15 @@ impl Func {
                 self.end_basic_block();
                 self.fwd.instructions().br_if(relative_depth);
             }
+            Operator::Drop => {
+                let ty = self.pop();
+                self.fwd.instructions().drop();
+                match ty {
+                    ValType::I32 | ValType::I64 => {}
+                    ValType::F32 => self.bwd.instructions(|insn| insn.f32_const(0.)),
+                    ValType::F64 => self.bwd.instructions(|insn| insn.f64_const(0.)),
+                }
+            }
             Operator::LocalGet { local_index } => {
                 let (ty, i) = self.local(local_index);
                 self.push(ty);
@@ -981,7 +990,7 @@ impl Func {
         self.push(ValType::F64);
     }
 
-    fn pop(&mut self) {
+    fn pop(&mut self) -> ValType {
         let ty = self.operand_stack.pop().unwrap();
         self.operand_stack_height.pop(ty);
         let n = self.operand_stack.len();
@@ -990,6 +999,7 @@ impl Func {
             self.bwd.deepen_stack(ty);
             self.operand_stack_height_min = n;
         }
+        ty
     }
 
     fn pop2(&mut self) {
