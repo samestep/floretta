@@ -78,6 +78,58 @@ fn test_square() {
 }
 
 #[test]
+fn test_drop_i32() {
+    Backprop {
+        wat: include_str!("../wat/drop_i32.wat"),
+        name: "drop",
+        input: 42,
+        output: (),
+        cotangent: (),
+        gradient: (),
+    }
+    .test()
+}
+
+#[test]
+fn test_drop_i64() {
+    Backprop {
+        wat: include_str!("../wat/drop_i64.wat"),
+        name: "drop",
+        input: 42i64,
+        output: (),
+        cotangent: (),
+        gradient: (),
+    }
+    .test()
+}
+
+#[test]
+fn test_drop_f32() {
+    Backprop {
+        wat: include_str!("../wat/drop_f32.wat"),
+        name: "drop",
+        input: 42.0f32,
+        output: (),
+        cotangent: (),
+        gradient: 0.0f32,
+    }
+    .test()
+}
+
+#[test]
+fn test_drop_f64() {
+    Backprop {
+        wat: include_str!("../wat/drop_f64.wat"),
+        name: "drop",
+        input: 42.,
+        output: (),
+        cotangent: (),
+        gradient: 0.,
+    }
+    .test()
+}
+
+#[test]
 fn test_local_set_f32() {
     Backprop {
         wat: include_str!("../wat/local_set_f32.wat"),
