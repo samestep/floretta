@@ -7,10 +7,15 @@ on:
 
 jobs:
   test:
+    strategy:
+      matrix:
+        rust:
+          - 1.78
+          - stable
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: rustup override set ${{ matrix.rust }}
       - run: cargo test
 
   cli:
