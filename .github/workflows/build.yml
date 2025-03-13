@@ -11,7 +11,7 @@ jobs:
       fail-fast: false
       matrix:
         rust:
-          - 1.78
+          - 1.76
           - stable
     runs-on: ubuntu-24.04
     steps:

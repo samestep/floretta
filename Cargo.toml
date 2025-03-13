@@ -7,7 +7,7 @@ version = "0.4.0"
 license = "MIT"
 repository = "https://github.com/samestep/floretta"
 edition = "2021"
-rust-version = "1.78"
+rust-version = "1.76"
 
 [workspace.dependencies]
 anyhow = "1"
@@ -27,8 +27,8 @@ wasmparser = { version = "0.226", default-features = false, features = [
   "validate",
 ] }
 wasmprinter = "0.226"
-wasmtime = "26"
-wat = "1"
+wasmtime = "22"
+wat = "~1.226"
 
 # https://github.com/johnthagen/min-sized-rust
 [profile.tiny]
