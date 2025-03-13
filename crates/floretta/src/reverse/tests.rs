@@ -78,6 +78,25 @@ fn test_square() {
 }
 
 #[test]
+fn test_br_if_return() {
+    let wat = include_str!("../wat/br_if_return.wat");
+    let (mut store, function, backprop) =
+        compile::<(i32, f64, f64), f64, (f64, f64), f64>(wat, "select");
+    {
+        let output = function.call(&mut store, (1, 2., 3.)).unwrap();
+        assert_eq!(output, 2.);
+        let gradient = backprop.call(&mut store, 1.).unwrap();
+        assert_eq!(gradient, (1., 0.));
+    }
+    {
+        let output = function.call(&mut store, (0, 2., 3.)).unwrap();
+        assert_eq!(output, 3.);
+        let gradient = backprop.call(&mut store, 1.).unwrap();
+        assert_eq!(gradient, (0., 1.));
+    }
+}
+
+#[test]
 fn test_drop_i32() {
     Backprop {
         wat: include_str!("../wat/drop_i32.wat"),
