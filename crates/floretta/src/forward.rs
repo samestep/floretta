@@ -1,13 +1,13 @@
 use wasm_encoder::{
-    CodeSection, ExportSection, Function, FunctionSection, InstructionSink, Module, TypeSection,
     reencode::{Reencode, RoundtripReencoder},
+    CodeSection, ExportSection, Function, FunctionSection, InstructionSink, Module, TypeSection,
 };
 use wasmparser::{FunctionBody, Operator, Parser, Payload};
 
 use crate::{
-    Autodiff,
-    util::{FuncTypes, ValType, u32_to_usize},
+    util::{u32_to_usize, FuncTypes, ValType},
     validate::{FunctionValidator, ModuleValidator},
+    Autodiff,
 };
 
 pub fn transform(
