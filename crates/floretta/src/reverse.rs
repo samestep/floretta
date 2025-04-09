@@ -18,7 +18,7 @@ use crate::{
         FUNC_TAPE_I32_BWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES,
         TYPE_DISPATCH,
     },
-    util::{u32_to_usize, FuncTypes, LocalMap, TypeMap, ValType},
+    util::{u32_to_usize, BlockType, FuncTypes, LocalMap, TypeMap, ValType},
     validate::{FunctionValidator, ModuleValidator},
     Autodiff,
 };
@@ -298,13 +298,14 @@ fn function(
         }
     }
     let mut func = Func {
+        type_sigs,
         num_float_results,
         locals,
         offset: 0, // This initial value should be unused; to be set before each instruction.
         operand_stack: Vec::new(),
         operand_stack_height: StackHeight::new(),
         operand_stack_height_min: 0,
-        control_stack: vec![Control::Block],
+        control_stack: vec![Control::Block(BlockType::Func(typeidx))],
         fwd,
         bwd,
         tmp_f32,
@@ -336,7 +337,10 @@ fn function(
     ))
 }
 
-struct Func {
+struct Func<'a> {
+    /// All type signatures in the module.
+    type_sigs: &'a FuncTypes,
+
     /// Number of floating-point results in the original function type.
     num_float_results: u32,
 
@@ -369,39 +373,42 @@ struct Func {
     tmp_f64: u32,
 }
 
-impl Func {
+impl<'a> Func<'a> {
     /// Process an instruction.
     fn instruction(&mut self, op: Operator<'_>) -> crate::Result<()> {
         match op {
             Operator::Loop { blockty } => {
-                match blockty {
-                    wasmparser::BlockType::Empty => {}
-                    wasmparser::BlockType::Type(_) => {}
-                    // Handling only the empty and single-result block types means that no data can
-                    // be passed when branching.
-                    wasmparser::BlockType::FuncType(_) => todo!(),
-                }
-                self.control_stack.push(Control::Loop);
+                let block_type = BlockType::try_from(blockty)?;
+                self.control_stack.push(Control::Loop(block_type));
                 self.fwd_control_store();
-                self.fwd
-                    .instructions()
-                    .loop_(RoundtripReencoder.block_type(blockty)?);
-                self.end_basic_block();
+                let reencoded = self.blockty(block_type);
+                self.fwd.instructions().loop_(reencoded);
+                self.end_basic_block_no_branch();
             }
-            Operator::End => match self.control_stack.pop().unwrap() {
-                Control::Block => {
-                    self.fwd.instructions().end();
-                    self.end_basic_block();
+            Operator::End => {
+                let control = self.control_stack.pop().unwrap();
+                if self.control_stack.is_empty() {
+                    // Reaching the bottom of the control stack means we've reached an implicit
+                    // return at the end of the function body, so we need to store the current basic
+                    // block index so that it can later be loaded to determine where to start in the
+                    // backward pass.
+                    self.fwd_control_store();
                 }
-                Control::Loop => {
-                    self.fwd.instructions().end();
+                match control {
+                    Control::Block(_) => {
+                        self.fwd.instructions().end();
+                        self.end_basic_block_no_branch();
+                    }
+                    Control::Loop(_) => {
+                        self.fwd.instructions().end();
+                    }
                 }
-            },
+            }
             Operator::BrIf { relative_depth } => {
                 self.pop();
                 self.fwd_control_store();
-                self.end_basic_block();
                 self.fwd.instructions().br_if(relative_depth);
+                self.end_basic_block_with_branch(relative_depth);
             }
             Operator::Drop => {
                 let ty = self.pop();
@@ -972,6 +979,21 @@ impl Func {
         Ok(())
     }
 
+    fn blockty_params(&self, block_type: BlockType) -> &'a [ValType] {
+        match block_type {
+            BlockType::Empty | BlockType::Result(_) => &[],
+            BlockType::Func(typeidx) => self.type_sigs.params(typeidx),
+        }
+    }
+
+    fn blockty_results(&self, block_type: BlockType) -> &'a [ValType] {
+        match block_type {
+            BlockType::Empty => &[],
+            BlockType::Result(val_type) => val_type.singleton(),
+            BlockType::Func(typeidx) => self.type_sigs.results(typeidx),
+        }
+    }
+
     fn push(&mut self, ty: ValType) {
         self.operand_stack.push(ty);
         self.operand_stack_height.push(ty);
@@ -1010,6 +1032,14 @@ impl Func {
         self.pop();
     }
 
+    fn blockty(&self, block_type: BlockType) -> wasm_encoder::BlockType {
+        match block_type {
+            BlockType::Empty => wasm_encoder::BlockType::Empty,
+            BlockType::Result(val_type) => wasm_encoder::BlockType::Result(val_type.into()),
+            BlockType::Func(typeidx) => wasm_encoder::BlockType::FunctionType(2 * typeidx),
+        }
+    }
+
     fn local(&self, index: u32) -> (ValType, Option<u32>) {
         let (ty, mapped) = self.locals.get(index);
         (ty, mapped.map(|i| self.num_float_results + i))
@@ -1023,10 +1053,31 @@ impl Func {
             .call(FUNC_TAPE_I32);
     }
 
-    fn end_basic_block(&mut self) {
+    fn end_basic_block_with_branch(&mut self, relative_depth: u32) {
+        let branch_val_types =
+            match self.control_stack[self.control_stack.len() - 1 - u32_to_usize(relative_depth)] {
+                Control::Block(block_type) => self.blockty_results(block_type),
+                Control::Loop(block_type) => self.blockty_params(block_type),
+            };
+        for _ in branch_val_types {
+            self.pop();
+        }
+        for &ty in branch_val_types {
+            self.push(ty);
+        }
         self.bwd.end_basic_block(
             self.operand_stack_height,
             &self.operand_stack[self.operand_stack_height_min..],
+            branch_val_types.len().try_into().unwrap(),
+        );
+        self.operand_stack_height_min = self.operand_stack.len();
+    }
+
+    fn end_basic_block_no_branch(&mut self) {
+        self.bwd.end_basic_block(
+            self.operand_stack_height,
+            &self.operand_stack[self.operand_stack_height_min..],
+            0,
         );
         self.operand_stack_height_min = self.operand_stack.len();
     }
@@ -1063,9 +1114,10 @@ impl StackHeight {
     }
 }
 
+#[derive(Clone, Copy)]
 enum Control {
-    Block,
-    Loop,
+    Block(BlockType),
+    Loop(BlockType),
 }
 
 struct Locals {
@@ -1121,6 +1173,10 @@ struct BasicBlock {
     /// Start index of the list of the types of operands on the stack after this basic block that
     /// were pushed to the stack during this basic block.
     stack_end_offset: u32,
+
+    /// Number of values on the stack at the end of this basic block that would be propagated if it
+    /// ended in a branch instruction, or zero otherwise.
+    branch_values: u32,
 }
 
 struct ReverseFunction {
@@ -1172,7 +1228,7 @@ impl ReverseFunction {
         self.basic_blocks.len().try_into().unwrap()
     }
 
-    fn end_basic_block(&mut self, height: StackHeight, stack: &[ValType]) {
+    fn end_basic_block(&mut self, height: StackHeight, stack: &[ValType], branch_values: u32) {
         self.body[self.block_start_offset..].reverse();
         let stack_end_offset = self.stacks.len().try_into().unwrap();
         self.stacks.extend_from_slice(stack);
@@ -1180,6 +1236,7 @@ impl ReverseFunction {
             start_offset: self.block_start_offset.try_into().unwrap(),
             stack_start_offset: self.block_stack_offset.try_into().unwrap(),
             stack_end_offset,
+            branch_values,
         });
         self.block_start_offset = self.body.len();
         self.block_stack_offset = self.stacks.len();
@@ -1228,10 +1285,9 @@ impl ReverseReverseFunction {
             operand_stack_height.push(ty);
         }
         let n = self.func.basic_blocks.len();
-        // We don't yet support the explicit `return` instruction, so we know that the forward pass
-        // exited from the last basic block with an implicit return; so, when we enter the state
-        // machine for the backward pass, we know to enter at that last basic block.
-        self.instructions().i32_const((n - 1).try_into().unwrap());
+        // The forward pass stores the basic block index before any implicit or explicit return, so
+        // we load it here to determine which basic block to start with in the backward pass.
+        self.instructions().call(FUNC_TAPE_I32_BWD);
         let blockty = wasm_encoder::BlockType::FunctionType(TYPE_DISPATCH);
         self.instructions().loop_(blockty);
         for _ in 0..n {
