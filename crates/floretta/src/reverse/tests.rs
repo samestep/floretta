@@ -49,11 +49,11 @@ struct Backprop<P, R, DP, DR> {
 }
 
 impl<
-    P: fmt::Debug + PartialEq + WasmParams,
-    R: fmt::Debug + PartialEq + WasmResults,
-    DP: fmt::Debug + PartialEq + WasmResults,
-    DR: fmt::Debug + PartialEq + WasmParams,
-> Backprop<P, R, DP, DR>
+        P: fmt::Debug + PartialEq + WasmParams,
+        R: fmt::Debug + PartialEq + WasmResults,
+        DP: fmt::Debug + PartialEq + WasmResults,
+        DR: fmt::Debug + PartialEq + WasmParams,
+    > Backprop<P, R, DP, DR>
 {
     fn test(self) {
         let (mut store, function, backprop) = compile::<P, R, DP, DR>(self.wat, self.name);

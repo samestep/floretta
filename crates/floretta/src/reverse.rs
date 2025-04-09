@@ -2,25 +2,25 @@
 mod tests;
 
 use wasm_encoder::{
+    reencode::{Reencode, RoundtripReencoder},
     CodeSection, Encode, ExportKind, ExportSection, Function, FunctionSection, GlobalSection,
     InstructionSink, MemorySection, Module, TypeSection,
-    reencode::{Reencode, RoundtripReencoder},
 };
 use wasmparser::{FunctionBody, Global, Operator, Parser, Payload};
 
 use crate::{
-    Autodiff,
     helper::{
-        FUNC_F32_DIV_BWD, FUNC_F32_DIV_FWD, FUNC_F32_MAX_BWD, FUNC_F32_MAX_FWD, FUNC_F32_MIN_BWD,
-        FUNC_F32_MIN_FWD, FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F32_SQRT_BWD, FUNC_F32_SQRT_FWD,
-        FUNC_F64_DIV_BWD, FUNC_F64_DIV_FWD, FUNC_F64_MAX_BWD, FUNC_F64_MAX_FWD, FUNC_F64_MIN_BWD,
-        FUNC_F64_MIN_FWD, FUNC_F64_MUL_BWD, FUNC_F64_MUL_FWD, FUNC_F64_SQRT_BWD, FUNC_F64_SQRT_FWD,
-        FUNC_TAPE_I32, FUNC_TAPE_I32_BWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES,
-        OFFSET_TYPES, TYPE_DISPATCH, helper_functions, helper_globals, helper_memories,
-        helper_types,
+        helper_functions, helper_globals, helper_memories, helper_types, FUNC_F32_DIV_BWD,
+        FUNC_F32_DIV_FWD, FUNC_F32_MAX_BWD, FUNC_F32_MAX_FWD, FUNC_F32_MIN_BWD, FUNC_F32_MIN_FWD,
+        FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F32_SQRT_BWD, FUNC_F32_SQRT_FWD, FUNC_F64_DIV_BWD,
+        FUNC_F64_DIV_FWD, FUNC_F64_MAX_BWD, FUNC_F64_MAX_FWD, FUNC_F64_MIN_BWD, FUNC_F64_MIN_FWD,
+        FUNC_F64_MUL_BWD, FUNC_F64_MUL_FWD, FUNC_F64_SQRT_BWD, FUNC_F64_SQRT_FWD, FUNC_TAPE_I32,
+        FUNC_TAPE_I32_BWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES,
+        TYPE_DISPATCH,
     },
-    util::{FuncTypes, LocalMap, TypeMap, ValType, u32_to_usize},
+    util::{u32_to_usize, FuncTypes, LocalMap, TypeMap, ValType},
     validate::{FunctionValidator, ModuleValidator},
+    Autodiff,
 };
 
 pub fn transform(
