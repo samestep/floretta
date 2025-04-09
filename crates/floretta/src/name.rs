@@ -166,6 +166,8 @@ pub trait FuncInfo {
     fn locals(&self, funcidx: u32) -> &LocalMap;
 
     fn stack_locals(&self, funcidx: u32) -> StackHeight;
+
+    fn branch_locals(&self, funcidx: u32) -> StackHeight;
 }
 
 #[derive(Default)]
@@ -348,6 +350,15 @@ pub fn name_section(functions: impl FuncInfo, names: Option<Names>) -> NameSecti
         }
         for i in 0..stack_locals.f64 {
             locals.append(local_index, &local_names.insert(&format!("stack_f64_{i}")));
+            local_index += 1;
+        }
+        let branch_locals = functions.branch_locals(index);
+        for i in 0..branch_locals.f32 {
+            locals.append(local_index, &local_names.insert(&format!("branch_f32_{i}")));
+            local_index += 1;
+        }
+        for i in 0..branch_locals.f64 {
+            locals.append(local_index, &local_names.insert(&format!("branch_f64_{i}")));
             local_index += 1;
         }
         locals_map.append(OFFSET_FUNCTIONS + 2 * index + 1, locals);

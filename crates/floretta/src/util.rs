@@ -17,6 +17,15 @@ impl ValType {
     pub fn is_float(self) -> bool {
         matches!(self, ValType::F32 | ValType::F64)
     }
+
+    pub fn singleton(self) -> &'static [Self] {
+        match self {
+            ValType::I32 => &[ValType::I32],
+            ValType::I64 => &[ValType::I64],
+            ValType::F32 => &[ValType::F32],
+            ValType::F64 => &[ValType::F64],
+        }
+    }
 }
 
 impl TryFrom<wasmparser::ValType> for ValType {
@@ -43,6 +52,25 @@ impl From<ValType> for wasm_encoder::ValType {
             ValType::I64 => wasm_encoder::ValType::I64,
             ValType::F32 => wasm_encoder::ValType::F32,
             ValType::F64 => wasm_encoder::ValType::F64,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BlockType {
+    Empty,
+    Result(ValType),
+    Func(u32),
+}
+
+impl TryFrom<wasmparser::BlockType> for BlockType {
+    type Error = ErrorImpl;
+
+    fn try_from(value: wasmparser::BlockType) -> Result<Self, Self::Error> {
+        match value {
+            wasmparser::BlockType::Empty => Ok(BlockType::Empty),
+            wasmparser::BlockType::Type(val_type) => Ok(BlockType::Result(val_type.try_into()?)),
+            wasmparser::BlockType::FuncType(typeidx) => Ok(BlockType::Func(typeidx)),
         }
     }
 }
