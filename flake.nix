@@ -26,6 +26,7 @@
             buildInputs = [
               gh
               nixfmt-rfc-style
+              nodejs
               uv
               wasm-tools
 
