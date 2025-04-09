@@ -43,6 +43,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - run: rustup override set nightly
+      - run: rustup component add rust-src --toolchain nightly
       - run: .github/wasm.py -o $GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
         with:

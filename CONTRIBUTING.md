@@ -5,7 +5,7 @@
 Be sure to have these tools installed:
 
 - [GitHub CLI][]
-- [Rust][]
+- [Rust][] nightly with the [`rust-src` component][rust-src]
 - [uv][]
 
 ## Setup
@@ -27,7 +27,7 @@ cargo test
 
 ## Wasm
 
-To compile Floretta itself into a Wasm binary (if you're on nightly Rust):
+To compile Floretta itself into a Wasm binary:
 
 ```sh
 .github/wasm.py
@@ -43,4 +43,5 @@ To make a new release:
 
 [github cli]: https://cli.github.com/
 [rust]: https://www.rust-lang.org/tools/install
+[rust-src]: https://rust-lang.github.io/rustup/concepts/components.html
 [uv]: https://docs.astral.sh/uv
