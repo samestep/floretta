@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests;
 
+use std::ops::Sub;
+
 use wasm_encoder::{
     reencode::{Reencode, RoundtripReencoder},
     CodeSection, Encode, ExportKind, ExportSection, Function, FunctionSection, GlobalSection,
@@ -335,7 +337,7 @@ fn function(
         FunctionInfo {
             typeidx,
             locals: func.locals,
-            stack_locals: func.bwd.max_stack_heights,
+            stack_locals: func.bwd.max_stack_values,
             branch_locals: func.bwd.max_branch_values,
         },
         func.fwd.into_raw_body(),
@@ -1117,6 +1119,19 @@ impl StackHeight {
     }
 }
 
+impl Sub for StackHeight {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
+        Self {
+            i32: self.i32 - rhs.i32,
+            i64: self.i64 - rhs.i64,
+            f32: self.f32 - rhs.f32,
+            f64: self.f64 - rhs.f64,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Control {
     Block(BlockType),
@@ -1194,7 +1209,7 @@ struct ReverseFunction {
     block_start_offset: usize,
     block_stack_offset: usize,
     operand_stack_height: StackHeight,
-    max_stack_heights: StackHeight,
+    max_stack_values: StackHeight,
     max_branch_values: StackHeight,
 }
 
@@ -1208,7 +1223,7 @@ impl ReverseFunction {
             block_start_offset: 0,
             block_stack_offset: 0,
             operand_stack_height: StackHeight::new(),
-            max_stack_heights: StackHeight::new(),
+            max_stack_values: StackHeight::new(),
             max_branch_values: StackHeight::new(),
         }
     }
@@ -1250,11 +1265,15 @@ impl ReverseFunction {
         self.block_start_offset = self.body.len();
         self.block_stack_offset = self.stacks.len();
         self.operand_stack_height = height;
-        self.max_stack_heights.take_max(height);
         let mut branch_values = StackHeight::new();
         for &ty in &stack[stack.len() - u32_to_usize(branch_end_count)..] {
             branch_values.push(ty);
         }
+        // We keep track of the maximum stack values so that we can later allocate enough locals for
+        // all of them, but these "branch values" at the top of the stack are going to use a
+        // different set of locals. So, we subtract them off before folding this into our running
+        // maximum.
+        self.max_stack_values.take_max(height - branch_values);
         self.max_branch_values.take_max(branch_values);
     }
 
@@ -1265,8 +1284,8 @@ impl ReverseFunction {
         // dispatches to a given basic block. We've kept track of the maximum number of values in
         // the stack for each type at each basic block boundary, so now we allocate enough locals to
         // store them all.
-        self.locals.locals(self.max_stack_heights.f32, ValType::F32);
-        self.locals.locals(self.max_stack_heights.f64, ValType::F64);
+        self.locals.locals(self.max_stack_values.f32, ValType::F32);
+        self.locals.locals(self.max_stack_values.f64, ValType::F64);
         let branch_local_offset = self.locals.count();
         // Typically stack values just go into the stack locals we just created, but for
         // branch-related instructions involving block types, some values need to go into these
@@ -1432,7 +1451,7 @@ impl ReverseReverseFunction {
         let i = match ty {
             ValType::I32 | ValType::I64 => return None,
             ValType::F32 => self.operand_stack_height.f32,
-            ValType::F64 => self.operand_stack_height.f64 + self.func.max_stack_heights.f32,
+            ValType::F64 => self.operand_stack_height.f64 + self.func.max_stack_values.f32,
         };
         Some(self.stack_local_offset + i)
     }
@@ -1441,7 +1460,7 @@ impl ReverseReverseFunction {
         let i = match ty {
             ValType::I32 | ValType::I64 => return None,
             ValType::F32 => branch_values.f32,
-            ValType::F64 => branch_values.f64 + self.func.max_stack_heights.f32,
+            ValType::F64 => branch_values.f64 + self.func.max_stack_values.f32,
         };
         Some(self.branch_local_offset + i)
     }

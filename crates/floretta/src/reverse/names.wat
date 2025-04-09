@@ -521,7 +521,7 @@
     call $tape_i32
   )
   (func $my_func_bwd (;23;) (type $my_type_bwd) (param $result_0 f64) (result f64)
-    (local $my_float_param f64) (local $tmp_f32 f32) (local $tmp_f64 f64) (local $stack_f64_0 f64) (local $branch_f64_0 f64)
+    (local $my_float_param f64) (local $tmp_f32 f32) (local $tmp_f64 f64) (local $branch_f64_0 f64)
     local.get $result_0
     local.set $branch_f64_0
     call $tape_i32_bwd
