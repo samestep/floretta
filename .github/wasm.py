@@ -13,12 +13,9 @@ def run(cmd: list[str]) -> None:
 
 
 def compile() -> str:
-    run(["rustup", "install", "nightly"])
-    run(["rustup", "component", "add", "rust-src", "--toolchain", "nightly"])
     run(
         [
             "cargo",
-            "+nightly",
             "build",
             "--package=floretta-wasm",
             "--target=wasm32-unknown-unknown",

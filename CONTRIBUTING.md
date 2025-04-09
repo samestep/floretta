@@ -27,7 +27,7 @@ cargo test
 
 ## Wasm
 
-To compile Floretta itself into a Wasm binary:
+To compile Floretta itself into a Wasm binary (if you're on nightly Rust):
 
 ```sh
 .github/wasm.py
