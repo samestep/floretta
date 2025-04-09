@@ -1460,7 +1460,7 @@ impl ReverseReverseFunction {
         let i = match ty {
             ValType::I32 | ValType::I64 => return None,
             ValType::F32 => branch_values.f32,
-            ValType::F64 => branch_values.f64 + self.func.max_stack_values.f32,
+            ValType::F64 => branch_values.f64 + self.func.max_branch_values.f32,
         };
         Some(self.branch_local_offset + i)
     }
