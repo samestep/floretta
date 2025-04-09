@@ -35,6 +35,9 @@ pub trait FunctionValidator {
     /// For debugging purposes.
     fn check_operand_stack_height(&self, height: u32);
 
+    /// For debugging purposes.
+    fn check_control_stack_height(&self, height: u32);
+
     fn op(&mut self, offset: usize, operator: &Operator) -> wasmparser::Result<()>;
 
     fn finish(&mut self, offset: usize) -> wasmparser::Result<()>;
@@ -83,6 +86,8 @@ impl FunctionValidator for () {
     }
 
     fn check_operand_stack_height(&self, _: u32) {}
+
+    fn check_control_stack_height(&self, _: u32) {}
 
     fn op(&mut self, _: usize, _: &Operator) -> wasmparser::Result<()> {
         Ok(())
@@ -141,6 +146,13 @@ impl<T: WasmModuleResources> FunctionValidator for FuncValidator<T> {
         let n = self.operand_stack_height();
         if n != height {
             panic!("operand stack height mismatch: expected {n}, got {height}");
+        }
+    }
+
+    fn check_control_stack_height(&self, height: u32) {
+        let n = self.control_stack_height();
+        if n != height {
+            panic!("control stack height mismatch: expected {n}, got {height}");
         }
     }
 

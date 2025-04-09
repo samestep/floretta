@@ -304,13 +304,14 @@ fn function(
         operand_stack: Vec::new(),
         operand_stack_height: StackHeight::new(),
         operand_stack_height_min: 0,
-        control_stack: Vec::new(),
+        control_stack: vec![Control::Block],
         fwd,
         bwd,
         tmp_f32,
         tmp_f64,
     };
     validator.check_operand_stack_height(0);
+    validator.check_control_stack_height(1);
     let mut operators_reader = body.get_operators_reader()?;
     while !operators_reader.eof() {
         let (op, offset) = operators_reader.read_with_offset()?;
@@ -318,7 +319,9 @@ fn function(
         func.offset = offset.try_into().unwrap();
         func.instruction(op)?;
         let operand_stack_height = func.operand_stack.len().try_into().unwrap();
+        let control_stack_height = func.control_stack.len().try_into().unwrap();
         validator.check_operand_stack_height(operand_stack_height);
+        validator.check_control_stack_height(control_stack_height);
         assert_eq!(func.operand_stack_height.sum(), operand_stack_height);
     }
     validator.finish(operators_reader.original_position())?;
@@ -385,13 +388,13 @@ impl Func {
                     .loop_(RoundtripReencoder.block_type(blockty)?);
                 self.end_basic_block();
             }
-            Operator::End => match self.control_stack.pop() {
-                Some(Control::Loop) => {
-                    self.fwd.instructions().end();
-                }
-                None => {
+            Operator::End => match self.control_stack.pop().unwrap() {
+                Control::Block => {
                     self.fwd.instructions().end();
                     self.end_basic_block();
+                }
+                Control::Loop => {
+                    self.fwd.instructions().end();
                 }
             },
             Operator::BrIf { relative_depth } => {
@@ -1061,6 +1064,7 @@ impl StackHeight {
 }
 
 enum Control {
+    Block,
     Loop,
 }
 
