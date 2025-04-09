@@ -196,7 +196,7 @@ impl LocalMap {
     }
 
     /// Return an iterator over the source entries of the local map.
-    pub fn keys(&self) -> impl ExactSizeIterator<Item = (u32, wasm_encoder::ValType)> {
+    pub fn keys(&self) -> impl ExactSizeIterator<Item = (u32, wasm_encoder::ValType)> + '_ {
         let mut start = 0;
         self.ends
             .iter()
@@ -209,7 +209,7 @@ impl LocalMap {
     }
 
     /// Return an iterator over the transformed entries of the local map.
-    pub fn vals(&self) -> impl ExactSizeIterator<Item = (u32, ValType)> {
+    pub fn vals(&self) -> impl ExactSizeIterator<Item = (u32, ValType)> + '_ {
         let mut start = 0;
         self.ends
             .iter()

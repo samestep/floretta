@@ -7,10 +7,16 @@ on:
 
 jobs:
   test:
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - 1.76
+          - stable
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: rustup override set ${{ matrix.rust }}
       - run: cargo test
 
   cli:
@@ -37,6 +43,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - run: rustup override set nightly
+      - run: rustup component add rust-src --toolchain nightly
       - run: .github/wasm.py -o $GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
         with:

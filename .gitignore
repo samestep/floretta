@@ -1,4 +1,6 @@
 .DS_Store
+/.direnv/
+/.envrc
 /floretta-*
 /floretta.wasm
 /target/
