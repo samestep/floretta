@@ -213,6 +213,7 @@ struct FunctionInfo {
     typeidx: u32,
     locals: LocalMap,
     stack_locals: StackHeight,
+    branch_locals: StackHeight,
 }
 
 #[cfg(feature = "names")]
@@ -237,6 +238,10 @@ impl crate::name::FuncInfo for (&FuncTypes, &[FunctionInfo]) {
 
     fn stack_locals(&self, funcidx: u32) -> StackHeight {
         self.1[u32_to_usize(funcidx)].stack_locals
+    }
+
+    fn branch_locals(&self, funcidx: u32) -> StackHeight {
+        self.1[u32_to_usize(funcidx)].branch_locals
     }
 }
 
@@ -331,6 +336,7 @@ fn function(
             typeidx,
             locals: func.locals,
             stack_locals: func.bwd.max_stack_heights,
+            branch_locals: func.bwd.max_branch_values,
         },
         func.fwd.into_raw_body(),
         func.bwd.into_raw_body(&func.operand_stack),
@@ -379,11 +385,12 @@ impl<'a> Func<'a> {
         match op {
             Operator::Loop { blockty } => {
                 let block_type = BlockType::try_from(blockty)?;
-                self.control_stack.push(Control::Loop(block_type));
+                let control = Control::Loop(block_type);
+                self.control_stack.push(control);
                 self.fwd_control_store();
                 let reencoded = self.blockty(block_type);
                 self.fwd.instructions().loop_(reencoded);
-                self.end_basic_block_no_branch();
+                self.end_basic_block(control);
             }
             Operator::End => {
                 let control = self.control_stack.pop().unwrap();
@@ -397,7 +404,7 @@ impl<'a> Func<'a> {
                 match control {
                     Control::Block(_) => {
                         self.fwd.instructions().end();
-                        self.end_basic_block_no_branch();
+                        self.end_basic_block(control);
                     }
                     Control::Loop(_) => {
                         self.fwd.instructions().end();
@@ -1053,12 +1060,11 @@ impl<'a> Func<'a> {
             .call(FUNC_TAPE_I32);
     }
 
-    fn end_basic_block_with_branch(&mut self, relative_depth: u32) {
-        let branch_val_types =
-            match self.control_stack[self.control_stack.len() - 1 - u32_to_usize(relative_depth)] {
-                Control::Block(block_type) => self.blockty_results(block_type),
-                Control::Loop(block_type) => self.blockty_params(block_type),
-            };
+    fn end_basic_block(&mut self, control: Control) {
+        let branch_val_types = match control {
+            Control::Block(block_type) => self.blockty_results(block_type),
+            Control::Loop(block_type) => self.blockty_params(block_type),
+        };
         for _ in branch_val_types {
             self.pop();
         }
@@ -1073,13 +1079,10 @@ impl<'a> Func<'a> {
         self.operand_stack_height_min = self.operand_stack.len();
     }
 
-    fn end_basic_block_no_branch(&mut self) {
-        self.bwd.end_basic_block(
-            self.operand_stack_height,
-            &self.operand_stack[self.operand_stack_height_min..],
-            0,
+    fn end_basic_block_with_branch(&mut self, relative_depth: u32) {
+        self.end_basic_block(
+            self.control_stack[self.control_stack.len() - 1 - u32_to_usize(relative_depth)],
         );
-        self.operand_stack_height_min = self.operand_stack.len();
     }
 }
 
@@ -1174,9 +1177,13 @@ struct BasicBlock {
     /// were pushed to the stack during this basic block.
     stack_end_offset: u32,
 
-    /// Number of values on the stack at the end of this basic block that would be propagated if it
-    /// ended in a branch instruction, or zero otherwise.
-    branch_values: u32,
+    /// Number of values on the top of the stack at the end of this basic block that could have come
+    /// from a branch instruction, from the perspective of the following block. This depends on the
+    /// instruction at the end of the basic block.
+    ///
+    /// - `end` of a `block`, or branch to a `block` or `if`: number of results in the block type.
+    /// - `loop`, or branch to a `loop`: number of parameters in the block type.
+    branch_end_count: u32,
 }
 
 struct ReverseFunction {
@@ -1188,6 +1195,7 @@ struct ReverseFunction {
     block_stack_offset: usize,
     operand_stack_height: StackHeight,
     max_stack_heights: StackHeight,
+    max_branch_values: StackHeight,
 }
 
 impl ReverseFunction {
@@ -1201,6 +1209,7 @@ impl ReverseFunction {
             block_stack_offset: 0,
             operand_stack_height: StackHeight::new(),
             max_stack_heights: StackHeight::new(),
+            max_branch_values: StackHeight::new(),
         }
     }
 
@@ -1228,7 +1237,7 @@ impl ReverseFunction {
         self.basic_blocks.len().try_into().unwrap()
     }
 
-    fn end_basic_block(&mut self, height: StackHeight, stack: &[ValType], branch_values: u32) {
+    fn end_basic_block(&mut self, height: StackHeight, stack: &[ValType], branch_end_count: u32) {
         self.body[self.block_start_offset..].reverse();
         let stack_end_offset = self.stacks.len().try_into().unwrap();
         self.stacks.extend_from_slice(stack);
@@ -1236,16 +1245,21 @@ impl ReverseFunction {
             start_offset: self.block_start_offset.try_into().unwrap(),
             stack_start_offset: self.block_stack_offset.try_into().unwrap(),
             stack_end_offset,
-            branch_values,
+            branch_end_count,
         });
         self.block_start_offset = self.body.len();
         self.block_stack_offset = self.stacks.len();
         self.operand_stack_height = height;
         self.max_stack_heights.take_max(height);
+        let mut branch_values = StackHeight::new();
+        for &ty in &stack[stack.len() - u32_to_usize(branch_end_count)..] {
+            branch_values.push(ty);
+        }
+        self.max_branch_values.take_max(branch_values);
     }
 
     fn into_raw_body(mut self, operand_stack: &[ValType]) -> Vec<u8> {
-        let local_count = self.locals.count();
+        let stack_local_offset = self.locals.count();
         // When we cross a basic block boundary in the backward pass, all floating-point values on
         // the stack need to be put into locals so that they can be retrieved after the `loop`
         // dispatches to a given basic block. We've kept track of the maximum number of values in
@@ -1253,13 +1267,23 @@ impl ReverseFunction {
         // store them all.
         self.locals.locals(self.max_stack_heights.f32, ValType::F32);
         self.locals.locals(self.max_stack_heights.f64, ValType::F64);
+        let branch_local_offset = self.locals.count();
+        // Typically stack values just go into the stack locals we just created, but for
+        // branch-related instructions involving block types, some values need to go into these
+        // branch locals instead. Conceptually, the stack locals represent the "bottom of the stack"
+        // since they stay put as things may change above them, whereas the branch locals represent
+        // the "top of the stack" since they may be passed around by branch instructions but their
+        // absolute position in the stack depends on control flow.
+        self.locals.locals(self.max_branch_values.f32, ValType::F32);
+        self.locals.locals(self.max_branch_values.f64, ValType::F64);
         let mut body = Vec::new();
         self.locals.blocks().encode(&mut body);
         body.extend_from_slice(self.locals.bytes());
         let operand_stack_height = self.operand_stack_height;
         ReverseReverseFunction {
             func: self,
-            local_count,
+            stack_local_offset,
+            branch_local_offset,
             body,
             operand_stack_height,
         }
@@ -1269,20 +1293,21 @@ impl ReverseFunction {
 
 struct ReverseReverseFunction {
     func: ReverseFunction,
-    local_count: u32,
+    stack_local_offset: u32,
+    branch_local_offset: u32,
     body: Vec<u8>,
     operand_stack_height: StackHeight,
 }
 
 impl ReverseReverseFunction {
     fn consume(mut self, operand_stack: &[ValType]) -> Vec<u8> {
-        let mut operand_stack_height = StackHeight::new();
+        let mut return_values = StackHeight::new();
         // Integers disappear in the backward pass.
         for (i, &ty) in (0..).zip(operand_stack.iter().filter(|&ty| ty.is_float())) {
             self.instructions().local_get(i);
-            let j = self.local_index_raw(operand_stack_height, ty).unwrap();
+            let j = self.branch_local_index(return_values, ty).unwrap();
             self.instructions().local_set(j);
-            operand_stack_height.push(ty);
+            return_values.push(ty);
         }
         let n = self.func.basic_blocks.len();
         // The forward pass stores the basic block index before any implicit or explicit return, so
@@ -1339,10 +1364,23 @@ impl ReverseReverseFunction {
         // trick as in the body of each basic block: reverse-encode each instruction, then go back
         // and re-reverse all the instructions we just encoded.
         let n = self.body.len();
+        // Some number of values on the top of the stack may need to be specially treated due to
+        // branch instructions; when we finished processing this basic block earlier, we stored the
+        // number of such values. Unlike our operand stack height bookkeeping which measures from
+        // the bottom of the stack, these more ephemeral values measure from the top of the stack,
+        // so they can just be initialized to zero here.
+        let mut branch_values = StackHeight::new();
         for &ty in self.func.stacks[stack_mid..stack_end].iter().rev() {
             self.operand_stack_height.pop(ty);
+            let local_index = if branch_values.sum() < bb.branch_end_count {
+                let li = self.branch_local_index(branch_values, ty);
+                branch_values.push(ty);
+                li
+            } else {
+                self.stack_local_index(ty)
+            };
             // Integers disappear in the backward pass.
-            if let Some(i) = self.local_index(ty) {
+            if let Some(i) = local_index {
                 reverse_encode(&mut self.body, |insn| insn.local_set(i));
                 // TODO: Only set stack locals to zero when they won't be overwritten later anyway.
                 match ty {
@@ -1361,9 +1399,24 @@ impl ReverseReverseFunction {
         // again happens to be the order we want, but once again we need to double-reverse
         // everything for operand stack bookkeeping.
         let n = self.body.len();
+        // Again we need to handle values at the top of the stack that need to be passed in branch
+        // locals instead of stack locals. This time, we've reached the beginning of this basic
+        // block, so we get the count by looking at the end of the previous basic block.
+        let branch_start_count = match index.checked_sub(1) {
+            Some(i) => self.func.basic_blocks[i].branch_end_count,
+            None => 0,
+        };
+        let mut branch_values = StackHeight::new();
         for &ty in self.func.stacks[stack_start..stack_mid].iter().rev() {
+            let local_index = if branch_values.sum() < branch_start_count {
+                let li = self.branch_local_index(branch_values, ty);
+                branch_values.push(ty);
+                li
+            } else {
+                self.stack_local_index(ty)
+            };
             // Integers disappear in the backward pass.
-            if let Some(i) = self.local_index(ty) {
+            if let Some(i) = local_index {
                 reverse_encode(&mut self.body, |insn| insn.local_set(i));
             }
             self.operand_stack_height.push(ty);
@@ -1375,17 +1428,22 @@ impl ReverseReverseFunction {
         InstructionSink::new(&mut self.body)
     }
 
-    fn local_index(&self, ty: ValType) -> Option<u32> {
-        self.local_index_raw(self.operand_stack_height, ty)
-    }
-
-    fn local_index_raw(&self, operand_stack_height: StackHeight, ty: ValType) -> Option<u32> {
+    fn stack_local_index(&self, ty: ValType) -> Option<u32> {
         let i = match ty {
             ValType::I32 | ValType::I64 => return None,
-            ValType::F32 => operand_stack_height.f32,
-            ValType::F64 => operand_stack_height.f64 + self.func.max_stack_heights.f32,
+            ValType::F32 => self.operand_stack_height.f32,
+            ValType::F64 => self.operand_stack_height.f64 + self.func.max_stack_heights.f32,
         };
-        Some(self.local_count + i)
+        Some(self.stack_local_offset + i)
+    }
+
+    fn branch_local_index(&self, branch_values: StackHeight, ty: ValType) -> Option<u32> {
+        let i = match ty {
+            ValType::I32 | ValType::I64 => return None,
+            ValType::F32 => branch_values.f32,
+            ValType::F64 => branch_values.f64 + self.func.max_stack_heights.f32,
+        };
+        Some(self.branch_local_offset + i)
     }
 }
 

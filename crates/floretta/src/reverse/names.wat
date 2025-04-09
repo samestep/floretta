@@ -521,9 +521,9 @@
     call $tape_i32
   )
   (func $my_func_bwd (;23;) (type $my_type_bwd) (param $result_0 f64) (result f64)
-    (local $my_float_param f64) (local $tmp_f32 f32) (local $tmp_f64 f64) (local $stack_f64_0 f64)
+    (local $my_float_param f64) (local $tmp_f32 f32) (local $tmp_f64 f64) (local $stack_f64_0 f64) (local $branch_f64_0 f64)
     local.get $result_0
-    local.set $stack_f64_0
+    local.set $branch_f64_0
     call $tape_i32_bwd
     loop (type $dispatch) (param i32) ;; label = @1
       block (type $dispatch) (param i32) ;; label = @2
@@ -533,9 +533,9 @@
         unreachable
       end
     end
-    local.get $stack_f64_0
+    local.get $branch_f64_0
     f64.const 0x0p+0 (;=0;)
-    local.set $stack_f64_0
+    local.set $branch_f64_0
     local.get $my_float_param
     f64.add
     local.set $my_float_param
