@@ -6,6 +6,12 @@ on:
       - main
 
 jobs:
+  fmt:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --check
+
   test:
     strategy:
       fail-fast: false

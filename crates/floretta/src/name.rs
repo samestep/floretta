@@ -9,8 +9,8 @@ use wasmparser::{IndirectNaming, Name, NameSectionReader, Naming};
 
 use crate::{
     helper::{
-        OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES, helper_functions,
-        helper_globals, helper_memories, helper_types,
+        helper_functions, helper_globals, helper_memories, helper_types, OFFSET_FUNCTIONS,
+        OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES,
     },
     reverse::StackHeight,
     util::LocalMap,
