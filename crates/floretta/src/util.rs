@@ -136,7 +136,7 @@ impl FuncTypes {
 }
 
 /// A map whose keys are Wasm types.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct TypeMap<T> {
     pub i32: T,
     pub i64: T,
