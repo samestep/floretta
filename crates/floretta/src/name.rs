@@ -338,10 +338,9 @@ pub fn name_section(functions: impl FuncInfo, names: Option<Names>) -> NameSecti
         for i in 0..num_float_results {
             locals.append(i, &local_names.insert(&format!("result_{i}")));
         }
-        let mut local_index = num_float_results + functions.locals(index).count();
-        locals.append(local_index, &local_names.insert("tmp_f32"));
-        local_index += 1;
-        locals.append(local_index, &local_names.insert("tmp_f64"));
+        let mut local_index = num_float_results + functions.locals(index).count_vals();
+        locals.append(local_index, &local_names.insert("tmp_i32"));
+        // TODO: Name `tmp_f32` and `tmp_f64` for both the forward pass and the backward pass.
         local_index += 1;
         let stack_locals = functions.stack_locals(index);
         for i in 0..stack_locals.f32 {

@@ -280,6 +280,12 @@ fn function(
         validator.define_locals(offset, count, ty)?;
         locals.push(count, ValType::try_from(ty)?);
     }
+    let (tmp_f32_fwd, tmp_f32_bwd) = (locals.count_keys(), num_float_results + locals.count_vals());
+    locals.push(1, ValType::F32);
+    let (tmp_f64_fwd, tmp_f64_bwd) = (locals.count_keys(), num_float_results + locals.count_vals());
+    locals.push(1, ValType::F64);
+    let tmp_i32_fwd = locals.count_keys();
+    locals.push(1, ValType::I32);
     // We added a single-local entry for each parameter from the original function type, so when we
     // encode the rest of the locals, we need to skip over the parameters.
     let fwd = Function::new(locals.keys().skip(params.len()));
@@ -287,8 +293,7 @@ fn function(
     for (count, ty) in locals.vals() {
         bwd.locals(count, ty);
     }
-    let tmp_f32 = bwd.local(ValType::F32);
-    let tmp_f64 = bwd.local(ValType::F64);
+    let tmp_i32_bwd = bwd.local(ValType::I32);
     // The first basic block in the forward pass corresponds to the last basic block in the backward
     // pass, and because each basic block will be reversed, the first instructions we write will
     // become the last instructions in the function body of the backward pass. Because Wasm
@@ -315,8 +320,12 @@ fn function(
         control_stack: vec![Control::Block(BlockType::Func(typeidx))],
         fwd,
         bwd,
-        tmp_f32,
-        tmp_f64,
+        tmp_i32_fwd,
+        tmp_f32_fwd,
+        tmp_f64_fwd,
+        tmp_i32_bwd,
+        tmp_f32_bwd,
+        tmp_f64_bwd,
     };
     validator.check_operand_stack_height(0);
     validator.check_control_stack_height(1);
@@ -374,11 +383,23 @@ struct Func<'a> {
     /// The backward pass under construction.
     bwd: ReverseFunction,
 
+    /// Local index for an `f32` in the forward pass.
+    tmp_f32_fwd: u32,
+
+    /// Local index for an `f64` in the forward pass.
+    tmp_f64_fwd: u32,
+
+    /// Local index for an `i32` in the forward pass.
+    tmp_i32_fwd: u32,
+
     /// Local index for an `f32` in the backward pass.
-    tmp_f32: u32,
+    tmp_f32_bwd: u32,
 
     /// Local index for an `f64` in the backward pass.
-    tmp_f64: u32,
+    tmp_f64_bwd: u32,
+
+    /// Local index for an `i32` in the backward pass.
+    tmp_i32_bwd: u32,
 }
 
 impl<'a> Func<'a> {
@@ -518,6 +539,88 @@ impl<'a> Func<'a> {
                         });
                     }
                 }
+            }
+            Operator::F32Load { memarg } => {
+                self.pop();
+                self.push_f32();
+                let (fwd, bwd) = self.memarg(memarg);
+                self.fwd
+                    .instructions()
+                    .local_tee(self.tmp_i32_fwd)
+                    .call(FUNC_TAPE_I32)
+                    .local_get(self.tmp_i32_fwd)
+                    .f32_load(fwd);
+                self.bwd.instructions(|insn| {
+                    insn.local_set(self.tmp_f32_bwd)
+                        .call(FUNC_TAPE_I32_BWD)
+                        .local_tee(self.tmp_i32_bwd)
+                        .local_get(self.tmp_i32_bwd)
+                        .f32_load(bwd)
+                        .local_get(self.tmp_f32_bwd)
+                        .f32_add()
+                        .f32_store(bwd)
+                });
+            }
+            Operator::F64Load { memarg } => {
+                self.pop();
+                self.push_f64();
+                let (fwd, bwd) = self.memarg(memarg);
+                self.fwd
+                    .instructions()
+                    .local_tee(self.tmp_i32_fwd)
+                    .call(FUNC_TAPE_I32)
+                    .local_get(self.tmp_i32_fwd)
+                    .f64_load(fwd);
+                self.bwd.instructions(|insn| {
+                    insn.local_set(self.tmp_f64_bwd)
+                        .call(FUNC_TAPE_I32_BWD)
+                        .local_tee(self.tmp_i32_bwd)
+                        .local_get(self.tmp_i32_bwd)
+                        .f64_load(bwd)
+                        .local_get(self.tmp_f64_bwd)
+                        .f64_add()
+                        .f64_store(bwd)
+                });
+            }
+            Operator::F32Store { memarg } => {
+                self.pop2();
+                let (fwd, bwd) = self.memarg(memarg);
+                self.fwd
+                    .instructions()
+                    .local_set(self.tmp_f32_fwd)
+                    .local_tee(self.tmp_i32_fwd)
+                    .call(FUNC_TAPE_I32)
+                    .local_get(self.tmp_i32_fwd)
+                    .local_get(self.tmp_f32_fwd)
+                    .f32_store(fwd);
+                self.bwd.instructions(|insn| {
+                    insn.call(FUNC_TAPE_I32_BWD)
+                        .local_tee(self.tmp_i32_bwd)
+                        .f32_load(bwd)
+                        .local_get(self.tmp_i32_bwd)
+                        .f32_const(0.)
+                        .f32_store(bwd)
+                });
+            }
+            Operator::F64Store { memarg } => {
+                self.pop2();
+                let (fwd, bwd) = self.memarg(memarg);
+                self.fwd
+                    .instructions()
+                    .local_set(self.tmp_f64_fwd)
+                    .local_tee(self.tmp_i32_fwd)
+                    .call(FUNC_TAPE_I32)
+                    .local_get(self.tmp_i32_fwd)
+                    .local_get(self.tmp_f64_fwd)
+                    .f64_store(fwd);
+                self.bwd.instructions(|insn| {
+                    insn.call(FUNC_TAPE_I32_BWD)
+                        .local_tee(self.tmp_i32_bwd)
+                        .f64_load(bwd)
+                        .local_get(self.tmp_i32_bwd)
+                        .f64_const(0.)
+                        .f64_store(bwd)
+                });
             }
             Operator::I32Const { value } => {
                 self.push_i32();
@@ -927,16 +1030,17 @@ impl<'a> Func<'a> {
                 self.pop2();
                 self.push_f32();
                 self.fwd.instructions().f32_add();
-                self.bwd
-                    .instructions(|insn| insn.local_tee(self.tmp_f32).local_get(self.tmp_f32));
+                self.bwd.instructions(|insn| {
+                    insn.local_tee(self.tmp_f32_bwd).local_get(self.tmp_f32_bwd)
+                });
             }
             Operator::F32Sub => {
                 self.pop2();
                 self.push_f32();
                 self.fwd.instructions().f32_sub();
                 self.bwd.instructions(|insn| {
-                    insn.local_tee(self.tmp_f32)
-                        .local_get(self.tmp_f32)
+                    insn.local_tee(self.tmp_f32_bwd)
+                        .local_get(self.tmp_f32_bwd)
                         .f32_neg()
                 });
             }
@@ -980,16 +1084,17 @@ impl<'a> Func<'a> {
                 self.pop2();
                 self.push_f64();
                 self.fwd.instructions().f64_add();
-                self.bwd
-                    .instructions(|insn| insn.local_tee(self.tmp_f64).local_get(self.tmp_f64));
+                self.bwd.instructions(|insn| {
+                    insn.local_tee(self.tmp_f64_bwd).local_get(self.tmp_f64_bwd)
+                });
             }
             Operator::F64Sub => {
                 self.pop2();
                 self.push_f64();
                 self.fwd.instructions().f64_sub();
                 self.bwd.instructions(|insn| {
-                    insn.local_tee(self.tmp_f64)
-                        .local_get(self.tmp_f64)
+                    insn.local_tee(self.tmp_f64_bwd)
+                        .local_get(self.tmp_f64_bwd)
                         .f64_neg()
                 });
             }
@@ -1081,6 +1186,14 @@ impl<'a> Func<'a> {
             BlockType::Result(val_type) => wasm_encoder::BlockType::Result(val_type.into()),
             BlockType::Func(typeidx) => wasm_encoder::BlockType::FunctionType(2 * typeidx),
         }
+    }
+
+    fn memarg(&self, memarg: wasmparser::MemArg) -> (wasm_encoder::MemArg, wasm_encoder::MemArg) {
+        let mut fwd = RoundtripReencoder.mem_arg(memarg);
+        fwd.memory_index = OFFSET_MEMORIES + 2 * fwd.memory_index;
+        let mut bwd = fwd;
+        bwd.memory_index += 1;
+        (fwd, bwd)
     }
 
     fn local(&self, index: u32) -> (ValType, Option<u32>) {

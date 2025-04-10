@@ -239,6 +239,32 @@ fn test_loop() {
 }
 
 #[test]
+fn test_f32_store_load() {
+    Backprop {
+        wat: include_str!("../wat/f32_store_load.wat"),
+        name: "roundtrip",
+        input: 42.0f32,
+        output: 42.0f32,
+        cotangent: 1.0f32,
+        gradient: 1.0f32,
+    }
+    .test()
+}
+
+#[test]
+fn test_f64_store_load() {
+    Backprop {
+        wat: include_str!("../wat/f64_store_load.wat"),
+        name: "roundtrip",
+        input: 42.,
+        output: 42.,
+        cotangent: 1.,
+        gradient: 1.,
+    }
+    .test()
+}
+
+#[test]
 fn test_i32_const() {
     Backprop {
         wat: include_str!("../wat/i32_const.wat"),

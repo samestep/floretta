@@ -201,9 +201,14 @@ impl LocalMap {
         self.types.push(ty);
     }
 
+    /// Get the number of locals in the source function.
+    pub fn count_keys(&self) -> u32 {
+        let &(end, _) = self.ends.last().unwrap_or(&(0, 0));
+        end
+    }
+
     /// Get the number of locals in the transformed function.
-    #[cfg(feature = "names")]
-    pub fn count(&self) -> u32 {
+    pub fn count_vals(&self) -> u32 {
         let &(_, end) = self.ends.last().unwrap_or(&(0, 0));
         end
     }
