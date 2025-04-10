@@ -468,11 +468,21 @@ impl<'a> Func<'a> {
                     self.split_basic_block_with_results(block_type);
                 }
             },
+            Operator::Br { relative_depth } => {
+                self.fwd_control_store();
+                self.fwd.instructions().br(relative_depth);
+                let branch_values = self.branch_values(relative_depth);
+                let current_stack_height = self.operand_stack_height.sum();
+                let stack_reset =
+                    current_stack_height - u32::try_from(branch_values.len()).unwrap();
+                self.split_basic_block(branch_values, stack_reset, &[]);
+            }
             Operator::BrIf { relative_depth } => {
                 self.pop();
                 self.fwd_control_store();
                 self.fwd.instructions().br_if(relative_depth);
-                self.split_basic_block_with_branch(relative_depth);
+                let branch_values = self.branch_values(relative_depth);
+                self.split_basic_block_fallthrough(branch_values);
             }
             Operator::Drop => {
                 let ty = self.pop();
@@ -1209,6 +1219,17 @@ impl<'a> Func<'a> {
             .call(FUNC_TAPE_I32);
     }
 
+    fn branch_values(&self, relative_depth: u32) -> &'a [ValType] {
+        match self.control_stack[self.control_stack.len() - 1 - u32_to_usize(relative_depth)] {
+            Control::Block(block_type) => self.blockty_results(block_type),
+            Control::Loop(block_type) => self.blockty_params(block_type),
+            Control::If {
+                block_type,
+                stack_height: _,
+            } => self.blockty_results(block_type),
+        }
+    }
+
     fn split_basic_block(
         &mut self,
         branch_values: &[ValType],
@@ -1244,27 +1265,19 @@ impl<'a> Func<'a> {
         }
     }
 
-    fn split_basic_block_with_params(&mut self, block_type: BlockType) {
-        let branch_values = self.blockty_params(block_type);
+    fn split_basic_block_fallthrough(&mut self, branch_values: &[ValType]) {
         let current_stack_height = self.operand_stack_height.sum();
         self.split_basic_block(branch_values, current_stack_height, branch_values);
+    }
+
+    fn split_basic_block_with_params(&mut self, block_type: BlockType) {
+        let branch_values = self.blockty_params(block_type);
+        self.split_basic_block_fallthrough(branch_values);
     }
 
     fn split_basic_block_with_results(&mut self, block_type: BlockType) {
         let branch_values = self.blockty_results(block_type);
-        let current_stack_height = self.operand_stack_height.sum();
-        self.split_basic_block(branch_values, current_stack_height, branch_values);
-    }
-
-    fn split_basic_block_with_branch(&mut self, relative_depth: u32) {
-        match self.control_stack[self.control_stack.len() - 1 - u32_to_usize(relative_depth)] {
-            Control::Block(block_type) => self.split_basic_block_with_results(block_type),
-            Control::Loop(block_type) => self.split_basic_block_with_params(block_type),
-            Control::If {
-                block_type,
-                stack_height: _,
-            } => self.split_basic_block_with_results(block_type),
-        }
+        self.split_basic_block_fallthrough(branch_values);
     }
 }
 
