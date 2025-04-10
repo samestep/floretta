@@ -154,6 +154,19 @@ fn test_br_if_return() {
 }
 
 #[test]
+fn test_call() {
+    Backprop {
+        wat: include_str!("../wat/call.wat"),
+        name: "tuple",
+        input: (2.0f64, 3i64, 4.0f32, 1i32),
+        output: (4.0f32, 1i32, 2.0f64, 3i64),
+        cotangent: (5.0f32, 6.0f64),
+        gradient: (6.0f64, 5.0f32),
+    }
+    .test()
+}
+
+#[test]
 fn test_drop_i32() {
     Backprop {
         wat: include_str!("../wat/drop_i32.wat"),

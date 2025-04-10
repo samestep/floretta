@@ -311,6 +311,7 @@ fn function(
     }
     let mut func = Func {
         type_sigs,
+        func_types,
         num_float_results,
         locals,
         offset: 0, // This initial value should be unused; to be set before each instruction.
@@ -357,6 +358,9 @@ fn function(
 struct Func<'a> {
     /// All type signatures in the module.
     type_sigs: &'a FuncTypes,
+
+    /// Type indices for all the functions in the module.
+    func_types: &'a [u32],
 
     /// Number of floating-point results in the original function type.
     num_float_results: u32,
@@ -483,6 +487,18 @@ impl<'a> Func<'a> {
                 self.fwd.instructions().br_if(relative_depth);
                 let branch_values = self.branch_values(relative_depth);
                 self.split_basic_block_fallthrough(branch_values);
+            }
+            Operator::Call { function_index } => {
+                let typeidx = self.func_types[u32_to_usize(function_index)];
+                for _ in self.type_sigs.params(typeidx) {
+                    self.pop();
+                }
+                for &result in self.type_sigs.results(typeidx) {
+                    self.push(result);
+                }
+                let (fwd, bwd) = self.func(function_index);
+                self.fwd.instructions().call(fwd);
+                self.bwd.instructions(|insn| insn.call(bwd));
             }
             Operator::Drop => {
                 let ty = self.pop();
@@ -1198,17 +1214,23 @@ impl<'a> Func<'a> {
         }
     }
 
-    fn memarg(&self, memarg: wasmparser::MemArg) -> (wasm_encoder::MemArg, wasm_encoder::MemArg) {
-        let mut fwd = RoundtripReencoder.mem_arg(memarg);
-        fwd.memory_index = OFFSET_MEMORIES + 2 * fwd.memory_index;
-        let mut bwd = fwd;
-        bwd.memory_index += 1;
+    fn func(&self, funcidx: u32) -> (u32, u32) {
+        let fwd = OFFSET_FUNCTIONS + 2 * funcidx;
+        let bwd = fwd + 1;
         (fwd, bwd)
     }
 
     fn local(&self, index: u32) -> (ValType, Option<u32>) {
         let (ty, mapped) = self.locals.get(index);
         (ty, mapped.map(|i| self.num_float_results + i))
+    }
+
+    fn memarg(&self, memarg: wasmparser::MemArg) -> (wasm_encoder::MemArg, wasm_encoder::MemArg) {
+        let mut fwd = RoundtripReencoder.mem_arg(memarg);
+        fwd.memory_index = OFFSET_MEMORIES + 2 * fwd.memory_index;
+        let mut bwd = fwd;
+        bwd.memory_index += 1;
+        (fwd, bwd)
     }
 
     /// In the forward pass, store the current basic block index on the tape.
