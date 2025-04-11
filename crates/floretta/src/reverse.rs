@@ -176,13 +176,15 @@ pub fn transform(
                             }
                             exports.export(e.name, kind, funcidx);
                             if let Some(name) = config.exports.get(e.name) {
-                                // TODO: Should we check that no export with this name already
-                                // exists?
                                 exports.export(name, kind, funcidx + 1);
                             }
                         }
                         ExportKind::Memory => {
-                            exports.export(e.name, kind, OFFSET_MEMORIES + 2 * e.index);
+                            let memidx = OFFSET_MEMORIES + 2 * e.index;
+                            exports.export(e.name, kind, memidx);
+                            if let Some(name) = config.exports.get(e.name) {
+                                exports.export(name, kind, memidx + 1);
+                            }
                         }
                         _ => {
                             exports.export(e.name, kind, e.index);

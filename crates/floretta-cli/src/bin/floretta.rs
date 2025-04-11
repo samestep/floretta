@@ -38,7 +38,7 @@ struct Cli {
     #[clap(short, long, value_names=["MODULE", "NAME", "MODULE", "NAME"])]
     import: Vec<String>,
 
-    /// In reverse mode, export the backward pass of a function that is already exported.
+    /// In the output Wasm, also export the derivative counterpart of an export from the input Wasm.
     #[clap(short, long, value_names=["NAME", "NAME"])]
     export: Vec<String>,
 

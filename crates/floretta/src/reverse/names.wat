@@ -23,7 +23,10 @@
   (global $tape_align_4 (;1;) (mut i32) i32.const 0)
   (global $tape_align_8 (;2;) (mut i32) i32.const 0)
   (global $my_global (;3;) f64 f64.const 0x0p+0 (;=0;))
-  (export "my_export" (func $my_func))
+  (export "my_exported_memory" (memory $my_memory))
+  (export "my_other_exported_memory" (memory $my_memory_bwd))
+  (export "my_exported_func" (func $my_func))
+  (export "my_other_exported_func" (func $my_func_bwd))
   (func $tape_i32 (;2;) (type $tape_i32) (param i32)
     (local i32 i32)
     global.get $tape_align_4

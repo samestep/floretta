@@ -13,6 +13,8 @@ fn test_names() {
     let mut ad = Autodiff::new();
     ad.names();
     ad.import(("foo", "bar"), ("baz", "qux"));
+    ad.export("my_exported_memory", "my_other_exported_memory");
+    ad.export("my_exported_func", "my_other_exported_func");
     let output = wasmprinter::print_bytes(ad.reverse(&input).unwrap()).unwrap();
     let mut mint = Mint::new("src/reverse");
     let mut file = mint.new_goldenfile("names.wat").unwrap();
