@@ -1,8 +1,19 @@
+use hashbrown::Equivalent;
+
 use crate::ErrorImpl;
 
 pub fn u32_to_usize(n: u32) -> usize {
     n.try_into()
         .expect("pointer size is assumed to be at least 32 bits")
+}
+
+#[derive(Hash)]
+pub struct TwoStrs<'a>(pub &'a str, pub &'a str);
+
+impl Equivalent<(String, String)> for TwoStrs<'_> {
+    fn equivalent(&self, key: &(String, String)) -> bool {
+        self.0 == key.0 && self.1 == key.1 // https://stackoverflow.com/a/75833909
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -133,6 +144,12 @@ impl FuncTypes {
             None => &self.val_types[i..],
         }
     }
+}
+
+/// Number of imports in a Wasm module.
+#[derive(Clone, Copy, Default)]
+pub struct NumImports {
+    pub func: u32,
 }
 
 /// A map whose keys are Wasm types.

@@ -14,6 +14,7 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 floretta = { path = "crates/floretta", version = "=0.4.0", default-features = false }
 goldenfile = "1.8"
+hashbrown = "0.15"
 itertools = "0.14"
 regex = "1"
 rstest = "0.24"

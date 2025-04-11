@@ -13,7 +13,7 @@ use crate::{
         OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES,
     },
     reverse::StackHeight,
-    util::LocalMap,
+    util::{LocalMap, NumImports},
 };
 
 struct NameNumbers {
@@ -159,6 +159,8 @@ impl NameGen<'_> {
 }
 
 pub trait FuncInfo {
+    fn num_imports(&self) -> NumImports;
+
     fn num_functions(&self) -> u32;
 
     fn num_float_results(&self, funcidx: u32) -> u32;
@@ -212,16 +214,22 @@ impl<'a> Names<'a> {
                     let mut function_names = function_set.take().unwrap();
                     for function in functions_in.clone() {
                         let Naming { index, name } = function?;
-                        function_map.append(OFFSET_FUNCTIONS + 2 * index, name);
+                        let mut funcidx = 2 * index;
+                        if index >= functions.num_imports().func {
+                            funcidx += OFFSET_FUNCTIONS;
+                        }
+                        function_map.append(funcidx, name);
                         function_names.insert(name);
                     }
                     let mut function_names = function_names.done();
                     for function in functions_in {
                         let Naming { index, name } = function?;
-                        function_map.append(
-                            OFFSET_FUNCTIONS + 2 * index + 1,
-                            &function_names.insert(&format!("{name}_bwd")),
-                        );
+                        let mut funcidx = 2 * index + 1;
+                        if index >= functions.num_imports().func {
+                            funcidx += OFFSET_FUNCTIONS;
+                        }
+                        function_map
+                            .append(funcidx, &function_names.insert(&format!("{name}_bwd")));
                     }
                     function_gen = Some(function_names);
                 }
@@ -244,7 +252,11 @@ impl<'a> Names<'a> {
                             }
                             local_names.insert(name);
                         }
-                        locals_map.append(OFFSET_FUNCTIONS + 2 * index, &locals_fwd);
+                        let mut funcidx = 2 * index;
+                        if index >= functions.num_imports().func {
+                            funcidx += OFFSET_FUNCTIONS;
+                        }
+                        locals_map.append(funcidx, &locals_fwd);
                         locals_maps.insert(index, (locals_bwd, local_names.done()));
                     }
                 }
@@ -326,7 +338,10 @@ pub fn name_section(functions: impl FuncInfo, names: Option<Names>) -> NameSecti
     } = names.unwrap_or_default();
 
     for (index, (name, ..)) in (0..).zip(helper_functions()) {
-        function_map.append(index, &function_gen.insert(name));
+        function_map.append(
+            2 * functions.num_imports().func + index,
+            &function_gen.insert(name),
+        );
     }
     section.functions(&function_map);
 
@@ -360,7 +375,13 @@ pub fn name_section(functions: impl FuncInfo, names: Option<Names>) -> NameSecti
             locals.append(local_index, &local_names.insert(&format!("branch_f64_{i}")));
             local_index += 1;
         }
-        locals_map.append(OFFSET_FUNCTIONS + 2 * index + 1, locals);
+        let mut funcidx = 2 * index + 1;
+        if index >= functions.num_imports().func {
+            funcidx += OFFSET_FUNCTIONS;
+        }
+        // This particular `if` statement should always be triggered, because there should never be
+        // local names for imported functions, but keep the conditional anyway for consistency.
+        locals_map.append(funcidx, locals);
     }
     section.locals(&locals_map);
 

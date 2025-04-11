@@ -88,6 +88,9 @@ enum ErrorImpl {
     #[error("code transformation error: {0}")]
     Transform(&'static str),
 
+    #[error("no import configured: {0:?} {1:?}")]
+    Import(String, String),
+
     #[error("Wasm reencoding error: {0}")]
     Reencode(#[from] reencode::Error),
 }

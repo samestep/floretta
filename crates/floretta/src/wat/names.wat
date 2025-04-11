@@ -1,5 +1,6 @@
 (module $my_module
   (type $my_type (func (param i32 f64) (result f64 i32)))
+  (import "foo" "bar" (func $my_imported_func (type $my_type)))
   (memory $my_memory 0)
   (global $my_global f64
     (f64.const 0))

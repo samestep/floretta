@@ -1,4 +1,4 @@
-use std::collections::{hash_map::Entry, HashMap};
+use hashbrown::{hash_map::Entry, HashMap};
 
 use crate::{ErrorImpl, NoValidate, Transform, Validate};
 
@@ -15,6 +15,9 @@ pub struct Autodiff {
     /// validate at the very beginning, so when doing the actual code transformation, validation
     /// dispatch is static.
     transform: Box<dyn Transform>,
+
+    /// Import identifiers for the backward passes of imported functions.
+    pub(crate) imports: HashMap<(String, String), (String, String)>,
 
     /// Exported functions whose backward passes should also be exported.
     pub(crate) exports: HashMap<String, String>,
@@ -36,6 +39,8 @@ impl Autodiff {
         Self {
             transform: Box::new(Validate),
 
+            imports: HashMap::new(),
+
             exports: HashMap::new(),
 
             #[cfg(feature = "names")]
@@ -48,6 +53,8 @@ impl Autodiff {
         Self {
             transform: Box::new(NoValidate),
 
+            imports: HashMap::new(),
+
             exports: HashMap::new(),
 
             #[cfg(feature = "names")]
@@ -59,6 +66,19 @@ impl Autodiff {
     #[cfg(feature = "names")]
     pub fn names(&mut self) {
         self.names = true;
+    }
+
+    pub fn import(
+        &mut self,
+        primal: (impl Into<String>, impl Into<String>),
+        derivative: (impl Into<String>, impl Into<String>),
+    ) {
+        match self.imports.entry((primal.0.into(), primal.1.into())) {
+            Entry::Occupied(entry) => panic!("mapping already exists for import {:?}", entry.key()),
+            Entry::Vacant(entry) => {
+                entry.insert((derivative.0.into(), derivative.1.into()));
+            }
+        }
     }
 
     /// In the output Wasm, also export the derivative counterpart of an export from the input Wasm.

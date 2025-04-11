@@ -1,7 +1,7 @@
 use wasmparser::{
     ExportSectionReader, FuncValidator, FuncValidatorAllocations, FunctionBody,
-    FunctionSectionReader, GlobalSectionReader, MemorySectionReader, Operator, Payload,
-    TypeSectionReader, Validator, ValidatorResources, WasmModuleResources,
+    FunctionSectionReader, GlobalSectionReader, ImportSectionReader, MemorySectionReader, Operator,
+    Payload, TypeSectionReader, Validator, ValidatorResources, WasmModuleResources,
 };
 
 /// Trait counterpart to [`wasmparser::Validator`].
@@ -11,6 +11,8 @@ pub trait ModuleValidator {
     fn payload(&mut self, payload: &Payload) -> wasmparser::Result<()>;
 
     fn type_section(&mut self, section: &TypeSectionReader) -> wasmparser::Result<()>;
+
+    fn import_section(&mut self, section: &ImportSectionReader) -> wasmparser::Result<()>;
 
     fn function_section(&mut self, section: &FunctionSectionReader) -> wasmparser::Result<()>;
 
@@ -47,6 +49,10 @@ impl ModuleValidator for () {
     type Func = ();
 
     fn payload(&mut self, _: &Payload) -> wasmparser::Result<()> {
+        Ok(())
+    }
+
+    fn import_section(&mut self, _: &ImportSectionReader) -> wasmparser::Result<()> {
         Ok(())
     }
 
@@ -108,6 +114,10 @@ impl ModuleValidator for Validator {
 
     fn type_section(&mut self, section: &TypeSectionReader) -> wasmparser::Result<()> {
         self.type_section(section)
+    }
+
+    fn import_section(&mut self, section: &ImportSectionReader) -> wasmparser::Result<()> {
+        self.import_section(section)
     }
 
     fn function_section(&mut self, section: &FunctionSectionReader) -> wasmparser::Result<()> {

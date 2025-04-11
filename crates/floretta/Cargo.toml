@@ -8,6 +8,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+hashbrown = { workspace = true }
 regex = { workspace = true }
 thiserror = { workspace = true }
 wasm-encoder = { workspace = true }

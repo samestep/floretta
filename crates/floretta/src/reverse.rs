@@ -6,23 +6,18 @@ use std::ops::Sub;
 use wasm_encoder::{
     reencode::{Reencode, RoundtripReencoder},
     CodeSection, Encode, ExportKind, ExportSection, Function, FunctionSection, GlobalSection,
-    InstructionSink, MemorySection, Module, TypeSection,
+    ImportSection, InstructionSink, MemorySection, Module, TypeSection,
 };
-use wasmparser::{FunctionBody, Global, Operator, Parser, Payload};
+use wasmparser::{FunctionBody, Global, Import, Operator, Parser, Payload, TypeRef};
 
 use crate::{
     helper::{
-        helper_functions, helper_globals, helper_memories, helper_types, FUNC_F32_DIV_BWD,
-        FUNC_F32_DIV_FWD, FUNC_F32_MAX_BWD, FUNC_F32_MAX_FWD, FUNC_F32_MIN_BWD, FUNC_F32_MIN_FWD,
-        FUNC_F32_MUL_BWD, FUNC_F32_MUL_FWD, FUNC_F32_SQRT_BWD, FUNC_F32_SQRT_FWD, FUNC_F64_DIV_BWD,
-        FUNC_F64_DIV_FWD, FUNC_F64_MAX_BWD, FUNC_F64_MAX_FWD, FUNC_F64_MIN_BWD, FUNC_F64_MIN_FWD,
-        FUNC_F64_MUL_BWD, FUNC_F64_MUL_FWD, FUNC_F64_SQRT_BWD, FUNC_F64_SQRT_FWD, FUNC_TAPE_I32,
-        FUNC_TAPE_I32_BWD, OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES,
-        TYPE_DISPATCH,
+        helper_functions, helper_globals, helper_memories, helper_types, FuncOffsets,
+        OFFSET_FUNCTIONS, OFFSET_GLOBALS, OFFSET_MEMORIES, OFFSET_TYPES, TYPE_DISPATCH,
     },
-    util::{u32_to_usize, BlockType, FuncTypes, LocalMap, TypeMap, ValType},
+    util::{u32_to_usize, BlockType, FuncTypes, LocalMap, NumImports, TwoStrs, TypeMap, ValType},
     validate::{FunctionValidator, ModuleValidator},
-    Autodiff,
+    Autodiff, ErrorImpl,
 };
 
 pub fn transform(
@@ -31,6 +26,7 @@ pub fn transform(
     wasm_module: &[u8],
 ) -> crate::Result<Vec<u8>> {
     let mut types = TypeSection::new();
+    let mut imports = ImportSection::new();
     let mut functions = FunctionSection::new();
     let mut memories = MemorySection::new();
     let mut globals = GlobalSection::new();
@@ -55,6 +51,7 @@ pub fn transform(
     assert_eq!(functions.len(), OFFSET_FUNCTIONS);
     assert_eq!(code.len(), OFFSET_FUNCTIONS);
     let mut type_sigs = FuncTypes::new();
+    let mut num_imports = NumImports::default();
     let mut func_types = Vec::new();
     let mut func_infos = Vec::new();
 
@@ -81,16 +78,47 @@ pub fn transform(
                     );
                 }
             }
+            Payload::ImportSection(section) => {
+                validator.import_section(&section)?;
+                for import in section {
+                    let Import { module, name, ty } = import?;
+                    let (module_bwd, name_bwd) = config
+                        .imports
+                        .get(&TwoStrs(module, name))
+                        .ok_or_else(|| ErrorImpl::Import(module.to_string(), name.to_string()))?;
+                    match ty {
+                        TypeRef::Func(typeidx) => {
+                            num_imports.func += 1;
+                            let mapped = OFFSET_TYPES + 2 * typeidx;
+                            let fwd = wasm_encoder::EntityType::Function(mapped);
+                            let bwd = wasm_encoder::EntityType::Function(mapped + 1);
+                            imports.import(module, name, fwd);
+                            imports.import(module_bwd, name_bwd, bwd);
+                            func_types.push(typeidx);
+                            func_infos.push(FunctionInfo {
+                                typeidx,
+                                locals: LocalMap::new(type_map()),
+                                stack_locals: StackHeight::new(),
+                                branch_locals: StackHeight::new(),
+                            });
+                        }
+                        TypeRef::Table(_) => unimplemented!(),
+                        TypeRef::Memory(_) => unimplemented!(),
+                        TypeRef::Global(_) => unimplemented!(),
+                        TypeRef::Tag(_) => unimplemented!(),
+                    }
+                }
+            }
             Payload::FunctionSection(section) => {
                 validator.function_section(&section)?;
                 for type_index in section {
-                    let t = type_index?;
+                    let typeidx = type_index?;
                     // Index arithmetic to account for the fact that we split each original
                     // function type into two; similarly, we also split each actual function
                     // into two.
-                    functions.function(OFFSET_TYPES + 2 * t);
-                    functions.function(OFFSET_TYPES + 2 * t + 1);
-                    func_types.push(t);
+                    functions.function(OFFSET_TYPES + 2 * typeidx);
+                    functions.function(OFFSET_TYPES + 2 * typeidx + 1);
+                    func_types.push(typeidx);
                 }
             }
             Payload::MemorySection(section) => {
@@ -142,11 +170,15 @@ pub fn transform(
                         ExportKind::Func => {
                             // More index arithmetic because we split every function into a
                             // forward pass and a backward pass.
-                            exports.export(e.name, kind, OFFSET_FUNCTIONS + 2 * e.index);
+                            let mut funcidx = 2 * e.index;
+                            if e.index >= num_imports.func {
+                                funcidx += OFFSET_FUNCTIONS;
+                            }
+                            exports.export(e.name, kind, funcidx);
                             if let Some(name) = config.exports.get(e.name) {
                                 // TODO: Should we check that no export with this name already
                                 // exists?
-                                exports.export(name, kind, OFFSET_FUNCTIONS + 2 * e.index + 1);
+                                exports.export(name, kind, funcidx + 1);
                             }
                         }
                         ExportKind::Memory => {
@@ -161,7 +193,8 @@ pub fn transform(
             Payload::CodeSectionEntry(body) => {
                 let func = validator.code_section_entry(&body)?;
                 let index = func_infos.len().try_into().unwrap();
-                let (info, fwd, bwd) = function(func, &type_sigs, &func_types, index, body)?;
+                let (info, fwd, bwd) =
+                    function(func, &type_sigs, num_imports, &func_types, index, body)?;
                 func_infos.push(info);
                 code.raw(&fwd);
                 code.raw(&bwd);
@@ -172,7 +205,7 @@ pub fn transform(
                 if let wasmparser::KnownCustom::Name(reader) = section.as_known() {
                     if config.names {
                         names = Some(crate::name::Names::new(
-                            (&type_sigs, func_infos.as_slice()),
+                            (&type_sigs, num_imports, func_infos.as_slice()),
                             reader,
                         )?);
                     }
@@ -184,6 +217,7 @@ pub fn transform(
     }
     let mut module = Module::new();
     module.section(&types);
+    module.section(&imports);
     module.section(&functions);
     module.section(&memories);
     module.section(&globals);
@@ -193,7 +227,7 @@ pub fn transform(
     #[cfg(feature = "names")]
     if config.names {
         module.section(&crate::name::name_section(
-            (&type_sigs, func_infos.as_slice()),
+            (&type_sigs, num_imports, func_infos.as_slice()),
             names,
         ));
     }
@@ -209,6 +243,14 @@ fn tuple(val_types: &[ValType]) -> Vec<wasm_encoder::ValType> {
         .collect()
 }
 
+fn type_map() -> TypeMap<u32> {
+    TypeMap {
+        i32: 0,
+        i64: 0,
+        f32: 1,
+        f64: 1,
+    }
+}
 // When the `names` feature is disabled, this gets marked as dead code.
 #[allow(dead_code)]
 struct FunctionInfo {
@@ -219,14 +261,18 @@ struct FunctionInfo {
 }
 
 #[cfg(feature = "names")]
-impl crate::name::FuncInfo for (&FuncTypes, &[FunctionInfo]) {
+impl crate::name::FuncInfo for (&FuncTypes, NumImports, &[FunctionInfo]) {
+    fn num_imports(&self) -> NumImports {
+        self.1
+    }
+
     fn num_functions(&self) -> u32 {
-        self.1.len().try_into().unwrap()
+        self.2.len().try_into().unwrap()
     }
 
     fn num_float_results(&self, funcidx: u32) -> u32 {
         self.0
-            .results(self.1[u32_to_usize(funcidx)].typeidx)
+            .results(self.2[u32_to_usize(funcidx)].typeidx)
             .iter()
             .filter(|ty| ty.is_float())
             .count()
@@ -235,21 +281,22 @@ impl crate::name::FuncInfo for (&FuncTypes, &[FunctionInfo]) {
     }
 
     fn locals(&self, funcidx: u32) -> &LocalMap {
-        &self.1[u32_to_usize(funcidx)].locals
+        &self.2[u32_to_usize(funcidx)].locals
     }
 
     fn stack_locals(&self, funcidx: u32) -> StackHeight {
-        self.1[u32_to_usize(funcidx)].stack_locals
+        self.2[u32_to_usize(funcidx)].stack_locals
     }
 
     fn branch_locals(&self, funcidx: u32) -> StackHeight {
-        self.1[u32_to_usize(funcidx)].branch_locals
+        self.2[u32_to_usize(funcidx)].branch_locals
     }
 }
 
 fn function(
     mut validator: impl FunctionValidator,
     type_sigs: &FuncTypes,
+    num_imports: NumImports,
     func_types: &[u32],
     funcidx: u32,
     body: FunctionBody,
@@ -264,12 +311,7 @@ fn function(
         .count()
         .try_into()
         .unwrap();
-    let mut locals = LocalMap::new(TypeMap {
-        i32: 0,
-        i64: 0,
-        f32: 1,
-        f64: 1,
-    });
+    let mut locals = LocalMap::new(type_map());
     for &param in params {
         locals.push(1, param);
     }
@@ -289,7 +331,7 @@ fn function(
     // We added a single-local entry for each parameter from the original function type, so when we
     // encode the rest of the locals, we need to skip over the parameters.
     let fwd = Function::new(locals.keys().skip(params.len()));
-    let mut bwd = ReverseFunction::new(num_float_results);
+    let mut bwd = ReverseFunction::new(num_imports, num_float_results);
     for (count, ty) in locals.vals() {
         bwd.locals(count, ty);
     }
@@ -311,6 +353,7 @@ fn function(
     }
     let mut func = Func {
         type_sigs,
+        num_imports,
         func_types,
         num_float_results,
         locals,
@@ -358,6 +401,9 @@ fn function(
 struct Func<'a> {
     /// All type signatures in the module.
     type_sigs: &'a FuncTypes,
+
+    /// Number of imports in the module.
+    num_imports: NumImports,
 
     /// Type indices for all the functions in the module.
     func_types: &'a [u32],
@@ -409,6 +455,7 @@ struct Func<'a> {
 impl<'a> Func<'a> {
     /// Process an instruction.
     fn instruction(&mut self, op: Operator<'_>) -> crate::Result<()> {
+        let helper = self.helpers();
         match op {
             Operator::Loop { blockty } => {
                 let block_type = BlockType::try_from(blockty)?;
@@ -573,12 +620,12 @@ impl<'a> Func<'a> {
                 self.fwd
                     .instructions()
                     .local_tee(self.tmp_i32_fwd)
-                    .call(FUNC_TAPE_I32)
+                    .call(helper.tape_i32())
                     .local_get(self.tmp_i32_fwd)
                     .f32_load(fwd);
                 self.bwd.instructions(|insn| {
                     insn.local_set(self.tmp_f32_bwd)
-                        .call(FUNC_TAPE_I32_BWD)
+                        .call(helper.tape_i32_bwd())
                         .local_tee(self.tmp_i32_bwd)
                         .local_get(self.tmp_i32_bwd)
                         .f32_load(bwd)
@@ -594,12 +641,12 @@ impl<'a> Func<'a> {
                 self.fwd
                     .instructions()
                     .local_tee(self.tmp_i32_fwd)
-                    .call(FUNC_TAPE_I32)
+                    .call(helper.tape_i32())
                     .local_get(self.tmp_i32_fwd)
                     .f64_load(fwd);
                 self.bwd.instructions(|insn| {
                     insn.local_set(self.tmp_f64_bwd)
-                        .call(FUNC_TAPE_I32_BWD)
+                        .call(helper.tape_i32_bwd())
                         .local_tee(self.tmp_i32_bwd)
                         .local_get(self.tmp_i32_bwd)
                         .f64_load(bwd)
@@ -615,12 +662,12 @@ impl<'a> Func<'a> {
                     .instructions()
                     .local_set(self.tmp_f32_fwd)
                     .local_tee(self.tmp_i32_fwd)
-                    .call(FUNC_TAPE_I32)
+                    .call(helper.tape_i32())
                     .local_get(self.tmp_i32_fwd)
                     .local_get(self.tmp_f32_fwd)
                     .f32_store(fwd);
                 self.bwd.instructions(|insn| {
-                    insn.call(FUNC_TAPE_I32_BWD)
+                    insn.call(helper.tape_i32_bwd())
                         .local_tee(self.tmp_i32_bwd)
                         .f32_load(bwd)
                         .local_get(self.tmp_i32_bwd)
@@ -635,12 +682,12 @@ impl<'a> Func<'a> {
                     .instructions()
                     .local_set(self.tmp_f64_fwd)
                     .local_tee(self.tmp_i32_fwd)
-                    .call(FUNC_TAPE_I32)
+                    .call(helper.tape_i32())
                     .local_get(self.tmp_i32_fwd)
                     .local_get(self.tmp_f64_fwd)
                     .f64_store(fwd);
                 self.bwd.instructions(|insn| {
-                    insn.call(FUNC_TAPE_I32_BWD)
+                    insn.call(helper.tape_i32_bwd())
                         .local_tee(self.tmp_i32_bwd)
                         .f64_load(bwd)
                         .local_get(self.tmp_i32_bwd)
@@ -1049,8 +1096,9 @@ impl<'a> Func<'a> {
             Operator::F32Sqrt => {
                 self.pop();
                 self.push_f32();
-                self.fwd.instructions().call(FUNC_F32_SQRT_FWD);
-                self.bwd.instructions(|insn| insn.call(FUNC_F32_SQRT_BWD));
+                self.fwd.instructions().call(helper.f32_sqrt_fwd());
+                self.bwd
+                    .instructions(|insn| insn.call(helper.f32_sqrt_bwd()));
             }
             Operator::F32Add => {
                 self.pop2();
@@ -1073,26 +1121,30 @@ impl<'a> Func<'a> {
             Operator::F32Mul => {
                 self.pop2();
                 self.push_f32();
-                self.fwd.instructions().call(FUNC_F32_MUL_FWD);
-                self.bwd.instructions(|insn| insn.call(FUNC_F32_MUL_BWD));
+                self.fwd.instructions().call(helper.f32_mul_fwd());
+                self.bwd
+                    .instructions(|insn| insn.call(helper.f32_mul_bwd()));
             }
             Operator::F32Div => {
                 self.pop2();
                 self.push_f32();
-                self.fwd.instructions().call(FUNC_F32_DIV_FWD);
-                self.bwd.instructions(|insn| insn.call(FUNC_F32_DIV_BWD));
+                self.fwd.instructions().call(helper.f32_div_fwd());
+                self.bwd
+                    .instructions(|insn| insn.call(helper.f32_div_bwd()));
             }
             Operator::F32Min => {
                 self.pop2();
                 self.push_f32();
-                self.fwd.instructions().call(FUNC_F32_MIN_FWD);
-                self.bwd.instructions(|insn| insn.call(FUNC_F32_MIN_BWD));
+                self.fwd.instructions().call(helper.f32_min_fwd());
+                self.bwd
+                    .instructions(|insn| insn.call(helper.f32_min_bwd()));
             }
             Operator::F32Max => {
                 self.pop2();
                 self.push_f32();
-                self.fwd.instructions().call(FUNC_F32_MAX_FWD);
-                self.bwd.instructions(|insn| insn.call(FUNC_F32_MAX_BWD));
+                self.fwd.instructions().call(helper.f32_max_fwd());
+                self.bwd
+                    .instructions(|insn| insn.call(helper.f32_max_bwd()));
             }
             Operator::F64Neg => {
                 self.pop();
@@ -1103,8 +1155,9 @@ impl<'a> Func<'a> {
             Operator::F64Sqrt => {
                 self.pop();
                 self.push_f64();
-                self.fwd.instructions().call(FUNC_F64_SQRT_FWD);
-                self.bwd.instructions(|insn| insn.call(FUNC_F64_SQRT_BWD));
+                self.fwd.instructions().call(helper.f64_sqrt_fwd());
+                self.bwd
+                    .instructions(|insn| insn.call(helper.f64_sqrt_bwd()));
             }
             Operator::F64Add => {
                 self.pop2();
@@ -1127,26 +1180,30 @@ impl<'a> Func<'a> {
             Operator::F64Mul => {
                 self.pop2();
                 self.push_f64();
-                self.fwd.instructions().call(FUNC_F64_MUL_FWD);
-                self.bwd.instructions(|insn| insn.call(FUNC_F64_MUL_BWD));
+                self.fwd.instructions().call(helper.f64_mul_fwd());
+                self.bwd
+                    .instructions(|insn| insn.call(helper.f64_mul_bwd()));
             }
             Operator::F64Div => {
                 self.pop2();
                 self.push_f64();
-                self.fwd.instructions().call(FUNC_F64_DIV_FWD);
-                self.bwd.instructions(|insn| insn.call(FUNC_F64_DIV_BWD));
+                self.fwd.instructions().call(helper.f64_div_fwd());
+                self.bwd
+                    .instructions(|insn| insn.call(helper.f64_div_bwd()));
             }
             Operator::F64Min => {
                 self.pop2();
                 self.push_f64();
-                self.fwd.instructions().call(FUNC_F64_MIN_FWD);
-                self.bwd.instructions(|insn| insn.call(FUNC_F64_MIN_BWD));
+                self.fwd.instructions().call(helper.f64_min_fwd());
+                self.bwd
+                    .instructions(|insn| insn.call(helper.f64_min_bwd()));
             }
             Operator::F64Max => {
                 self.pop2();
                 self.push_f64();
-                self.fwd.instructions().call(FUNC_F64_MAX_FWD);
-                self.bwd.instructions(|insn| insn.call(FUNC_F64_MAX_BWD));
+                self.fwd.instructions().call(helper.f64_max_fwd());
+                self.bwd
+                    .instructions(|insn| insn.call(helper.f64_max_bwd()));
             }
             _ => unimplemented!("{op:?}"),
         }
@@ -1214,8 +1271,15 @@ impl<'a> Func<'a> {
         }
     }
 
+    fn helpers(&self) -> FuncOffsets {
+        FuncOffsets::new(self.num_imports)
+    }
+
     fn func(&self, funcidx: u32) -> (u32, u32) {
-        let fwd = OFFSET_FUNCTIONS + 2 * funcidx;
+        let mut fwd = 2 * funcidx;
+        if funcidx >= self.num_imports.func {
+            fwd += OFFSET_FUNCTIONS;
+        }
         let bwd = fwd + 1;
         (fwd, bwd)
     }
@@ -1235,10 +1299,11 @@ impl<'a> Func<'a> {
 
     /// In the forward pass, store the current basic block index on the tape.
     fn fwd_control_store(&mut self) {
+        let helper = self.helpers();
         self.fwd
             .instructions()
             .i32_const(self.bwd.basic_block_index())
-            .call(FUNC_TAPE_I32);
+            .call(helper.tape_i32());
     }
 
     fn branch_values(&self, relative_depth: u32) -> &'a [ValType] {
@@ -1432,6 +1497,7 @@ struct BasicBlock {
 }
 
 struct ReverseFunction {
+    num_imports: NumImports,
     locals: Locals,
     body: Vec<u8>,
     stacks: Vec<ValType>,
@@ -1444,8 +1510,9 @@ struct ReverseFunction {
 }
 
 impl ReverseFunction {
-    fn new(params: u32) -> Self {
+    fn new(num_imports: NumImports, params: u32) -> Self {
         Self {
+            num_imports,
             locals: Locals::new(params),
             body: Vec::new(),
             stacks: Vec::new(),
@@ -1556,6 +1623,7 @@ struct ReverseReverseFunction {
 
 impl ReverseReverseFunction {
     fn consume(mut self, operand_stack: &[ValType]) -> Vec<u8> {
+        let helper = FuncOffsets::new(self.func.num_imports);
         let mut return_values = StackHeight::new();
         // Integers disappear in the backward pass.
         for (i, &ty) in (0..).zip(operand_stack.iter().filter(|&ty| ty.is_float())) {
@@ -1567,7 +1635,7 @@ impl ReverseReverseFunction {
         let n = self.func.basic_blocks.len();
         // The forward pass stores the basic block index before any implicit or explicit return, so
         // we load it here to determine which basic block to start with in the backward pass.
-        self.instructions().call(FUNC_TAPE_I32_BWD);
+        self.instructions().call(helper.tape_i32_bwd());
         let blockty = wasm_encoder::BlockType::FunctionType(TYPE_DISPATCH);
         self.instructions().loop_(blockty);
         for _ in 0..n {
@@ -1588,7 +1656,7 @@ impl ReverseReverseFunction {
             self.instructions().end();
             self.basic_block(i);
             self.instructions()
-                .call(FUNC_TAPE_I32_BWD) // Load basic block index.
+                .call(helper.tape_i32_bwd()) // Load basic block index.
                 .br(i.try_into().unwrap()); // Branch to the `loop`.
         }
         self.instructions().end().end();

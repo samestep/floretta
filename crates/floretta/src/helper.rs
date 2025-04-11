@@ -2,6 +2,8 @@ use wasm_encoder::{
     BlockType, ConstExpr, FuncType, Function, GlobalType, MemArg, MemoryType, ValType,
 };
 
+use crate::util::NumImports;
+
 pub const OFFSET_TYPES: u32 = 11;
 pub const TYPE_DISPATCH: u32 = 0;
 const TYPE_TAPE_I32: u32 = 1;
@@ -26,28 +28,108 @@ const GLOBAL_TAPE_ALIGN_4: u32 = 1;
 const GLOBAL_TAPE_ALIGN_8: u32 = 2;
 
 pub const OFFSET_FUNCTIONS: u32 = 22;
-pub const FUNC_TAPE_I32: u32 = 0;
-pub const FUNC_TAPE_I32_BWD: u32 = 1;
-pub const FUNC_F32_SQRT_FWD: u32 = 2;
-pub const FUNC_F32_SQRT_BWD: u32 = 3;
-pub const FUNC_F32_MUL_FWD: u32 = 4;
-pub const FUNC_F32_MUL_BWD: u32 = 5;
-pub const FUNC_F32_DIV_FWD: u32 = 6;
-pub const FUNC_F32_DIV_BWD: u32 = 7;
-pub const FUNC_F32_MIN_FWD: u32 = 8;
-pub const FUNC_F32_MIN_BWD: u32 = 9;
-pub const FUNC_F32_MAX_FWD: u32 = 10;
-pub const FUNC_F32_MAX_BWD: u32 = 11;
-pub const FUNC_F64_SQRT_FWD: u32 = 12;
-pub const FUNC_F64_SQRT_BWD: u32 = 13;
-pub const FUNC_F64_MUL_FWD: u32 = 14;
-pub const FUNC_F64_MUL_BWD: u32 = 15;
-pub const FUNC_F64_DIV_FWD: u32 = 16;
-pub const FUNC_F64_DIV_BWD: u32 = 17;
-pub const FUNC_F64_MIN_FWD: u32 = 18;
-pub const FUNC_F64_MIN_BWD: u32 = 19;
-pub const FUNC_F64_MAX_FWD: u32 = 20;
-pub const FUNC_F64_MAX_BWD: u32 = 21;
+
+pub struct FuncOffsets {
+    num_imports: NumImports,
+}
+
+impl FuncOffsets {
+    pub fn new(num_imports: NumImports) -> Self {
+        Self { num_imports }
+    }
+
+    fn offset(&self) -> u32 {
+        2 * self.num_imports.func
+    }
+
+    pub fn tape_i32(&self) -> u32 {
+        self.offset()
+    }
+
+    pub fn tape_i32_bwd(&self) -> u32 {
+        self.offset() + 1
+    }
+
+    pub fn f32_sqrt_fwd(&self) -> u32 {
+        self.offset() + 2
+    }
+
+    pub fn f32_sqrt_bwd(&self) -> u32 {
+        self.offset() + 3
+    }
+
+    pub fn f32_mul_fwd(&self) -> u32 {
+        self.offset() + 4
+    }
+
+    pub fn f32_mul_bwd(&self) -> u32 {
+        self.offset() + 5
+    }
+
+    pub fn f32_div_fwd(&self) -> u32 {
+        self.offset() + 6
+    }
+
+    pub fn f32_div_bwd(&self) -> u32 {
+        self.offset() + 7
+    }
+
+    pub fn f32_min_fwd(&self) -> u32 {
+        self.offset() + 8
+    }
+
+    pub fn f32_min_bwd(&self) -> u32 {
+        self.offset() + 9
+    }
+
+    pub fn f32_max_fwd(&self) -> u32 {
+        self.offset() + 10
+    }
+
+    pub fn f32_max_bwd(&self) -> u32 {
+        self.offset() + 11
+    }
+
+    pub fn f64_sqrt_fwd(&self) -> u32 {
+        self.offset() + 12
+    }
+
+    pub fn f64_sqrt_bwd(&self) -> u32 {
+        self.offset() + 13
+    }
+
+    pub fn f64_mul_fwd(&self) -> u32 {
+        self.offset() + 14
+    }
+
+    pub fn f64_mul_bwd(&self) -> u32 {
+        self.offset() + 15
+    }
+
+    pub fn f64_div_fwd(&self) -> u32 {
+        self.offset() + 16
+    }
+
+    pub fn f64_div_bwd(&self) -> u32 {
+        self.offset() + 17
+    }
+
+    pub fn f64_min_fwd(&self) -> u32 {
+        self.offset() + 18
+    }
+
+    pub fn f64_min_bwd(&self) -> u32 {
+        self.offset() + 19
+    }
+
+    pub fn f64_max_fwd(&self) -> u32 {
+        self.offset() + 20
+    }
+
+    pub fn f64_max_bwd(&self) -> u32 {
+        self.offset() + 21
+    }
+}
 
 pub fn helper_types() -> impl Iterator<Item = (&'static str, FuncType)> {
     [
@@ -148,130 +230,136 @@ pub fn helper_globals() -> impl Iterator<Item = (&'static str, GlobalType, Const
 }
 
 pub fn helper_functions() -> impl Iterator<Item = (&'static str, u32, Function)> {
+    let offsets = FuncOffsets::new(NumImports::default());
     [
-        (FUNC_TAPE_I32, "tape_i32", TYPE_TAPE_I32, func_tape_i32()),
         (
-            FUNC_TAPE_I32_BWD,
+            offsets.tape_i32(),
+            "tape_i32",
+            TYPE_TAPE_I32,
+            func_tape_i32(),
+        ),
+        (
+            offsets.tape_i32_bwd(),
             "tape_i32_bwd",
             TYPE_TAPE_I32_BWD,
             func_tape_i32_bwd(),
         ),
         (
-            FUNC_F32_SQRT_FWD,
+            offsets.f32_sqrt_fwd(),
             "f32_sqrt",
             TYPE_F32_UNARY,
             func_f32_sqrt_fwd(),
         ),
         (
-            FUNC_F32_SQRT_BWD,
+            offsets.f32_sqrt_bwd(),
             "f32_sqrt_bwd",
             TYPE_F32_UNARY,
             func_f32_sqrt_bwd(),
         ),
         (
-            FUNC_F32_MUL_FWD,
+            offsets.f32_mul_fwd(),
             "f32_mul",
             TYPE_F32_BIN_FWD,
             func_f32_mul_fwd(),
         ),
         (
-            FUNC_F32_MUL_BWD,
+            offsets.f32_mul_bwd(),
             "f32_mul_bwd",
             TYPE_F32_BIN_BWD,
             func_f32_mul_bwd(),
         ),
         (
-            FUNC_F32_DIV_FWD,
+            offsets.f32_div_fwd(),
             "f32_div",
             TYPE_F32_BIN_FWD,
             func_f32_div_fwd(),
         ),
         (
-            FUNC_F32_DIV_BWD,
+            offsets.f32_div_bwd(),
             "f32_div_bwd",
             TYPE_F32_BIN_BWD,
             func_f32_div_bwd(),
         ),
         (
-            FUNC_F32_MIN_FWD,
+            offsets.f32_min_fwd(),
             "f32_min",
             TYPE_F32_BIN_FWD,
             func_f32_min_fwd(),
         ),
         (
-            FUNC_F32_MIN_BWD,
+            offsets.f32_min_bwd(),
             "f32_min_bwd",
             TYPE_F32_BIN_BWD,
             func_f32_min_bwd(),
         ),
         (
-            FUNC_F32_MAX_FWD,
+            offsets.f32_max_fwd(),
             "f32_max",
             TYPE_F32_BIN_FWD,
             func_f32_max_fwd(),
         ),
         (
-            FUNC_F32_MAX_BWD,
+            offsets.f32_max_bwd(),
             "f32_max_bwd",
             TYPE_F32_BIN_BWD,
             func_f32_max_bwd(),
         ),
         (
-            FUNC_F64_SQRT_FWD,
+            offsets.f64_sqrt_fwd(),
             "f64_sqrt",
             TYPE_F64_UNARY,
             func_f64_sqrt_fwd(),
         ),
         (
-            FUNC_F64_SQRT_BWD,
+            offsets.f64_sqrt_bwd(),
             "f64_sqrt_bwd",
             TYPE_F64_UNARY,
             func_f64_sqrt_bwd(),
         ),
         (
-            FUNC_F64_MUL_FWD,
+            offsets.f64_mul_fwd(),
             "f64_mul",
             TYPE_F64_BIN_FWD,
             func_f64_mul_fwd(),
         ),
         (
-            FUNC_F64_MUL_BWD,
+            offsets.f64_mul_bwd(),
             "f64_mul_bwd",
             TYPE_F64_BIN_BWD,
             func_f64_mul_bwd(),
         ),
         (
-            FUNC_F64_DIV_FWD,
+            offsets.f64_div_fwd(),
             "f64_div",
             TYPE_F64_BIN_FWD,
             func_f64_div_fwd(),
         ),
         (
-            FUNC_F64_DIV_BWD,
+            offsets.f64_div_bwd(),
             "f64_div_bwd",
             TYPE_F64_BIN_BWD,
             func_f64_div_bwd(),
         ),
         (
-            FUNC_F64_MIN_FWD,
+            offsets.f64_min_fwd(),
             "f64_min",
             TYPE_F64_BIN_FWD,
             func_f64_min_fwd(),
         ),
         (
-            FUNC_F64_MIN_BWD,
+            offsets.f64_min_bwd(),
             "f64_min_bwd",
             TYPE_F64_BIN_BWD,
             func_f64_min_bwd(),
         ),
         (
-            FUNC_F64_MAX_FWD,
+            offsets.f64_max_fwd(),
             "f64_max",
             TYPE_F64_BIN_FWD,
             func_f64_max_fwd(),
         ),
         (
-            FUNC_F64_MAX_BWD,
+            offsets.f64_max_bwd(),
             "f64_max_bwd",
             TYPE_F64_BIN_BWD,
             func_f64_max_bwd(),

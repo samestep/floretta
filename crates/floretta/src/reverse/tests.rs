@@ -2,7 +2,7 @@ use std::{fmt, io::Write};
 
 use goldenfile::Mint;
 use rstest::rstest;
-use wasmtime::{Engine, Instance, Module, Store, TypedFunc, WasmParams, WasmResults};
+use wasmtime::{Caller, Engine, Linker, Module, Store, TypedFunc, WasmParams, WasmResults};
 
 use crate::Autodiff;
 
@@ -12,31 +12,51 @@ fn test_names() {
     let input = wat::parse_str(include_str!("../wat/names.wat")).unwrap();
     let mut ad = Autodiff::new();
     ad.names();
+    ad.import(("foo", "bar"), ("baz", "qux"));
     let output = wasmprinter::print_bytes(ad.reverse(&input).unwrap()).unwrap();
     let mut mint = Mint::new("src/reverse");
     let mut file = mint.new_goldenfile("names.wat").unwrap();
     file.write_all(output.as_bytes()).unwrap();
 }
 
-fn compile<P: WasmParams, R: WasmResults, DP: WasmResults, DR: WasmParams>(
+struct Data {
+    tape: Vec<f64>,
+}
+
+impl Data {
+    fn new() -> Self {
+        Self { tape: Vec::new() }
+    }
+}
+
+fn compile_with_imports<P: WasmParams, R: WasmResults, DP: WasmResults, DR: WasmParams>(
     wat: &str,
     name: &str,
-) -> (Store<()>, TypedFunc<P, R>, TypedFunc<DR, DP>) {
+    imports: impl FnOnce(&mut Linker<Data>, &mut Autodiff),
+) -> (Store<Data>, TypedFunc<P, R>, TypedFunc<DR, DP>) {
     let input = wat::parse_str(wat).unwrap();
-
+    let engine = Engine::default();
+    let mut linker = Linker::new(&engine);
     let mut ad = Autodiff::new();
+    imports(&mut linker, &mut ad);
     ad.export(name, "backprop");
     let output = ad.reverse(&input).unwrap();
-
-    let engine = Engine::default();
-    let mut store = Store::new(&engine, ());
+    let data = Data::new();
+    let mut store = Store::new(&engine, data);
     let module = Module::new(&engine, &output).unwrap();
-    let instance = Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = linker.instantiate(&mut store, &module).unwrap();
     let function = instance.get_typed_func::<P, R>(&mut store, name).unwrap();
     let backprop = instance
         .get_typed_func::<DR, DP>(&mut store, "backprop")
         .unwrap();
     (store, function, backprop)
+}
+
+fn compile<P: WasmParams, R: WasmResults, DP: WasmResults, DR: WasmParams>(
+    wat: &str,
+    name: &str,
+) -> (Store<Data>, TypedFunc<P, R>, TypedFunc<DR, DP>) {
+    compile_with_imports(wat, name, |_, _| {})
 }
 
 struct Backprop<P, R, DP, DR> {
@@ -75,6 +95,50 @@ fn test_square() {
         gradient: 6.,
     }
     .test()
+}
+
+#[test]
+fn test_import_func() {
+    let wat = include_str!("../wat/import_func.wat");
+    let (mut store, function, backprop) =
+        compile_with_imports::<f64, f64, f64, f64>(wat, "sigmoid", |linker, ad| {
+            linker
+                .func_wrap("f64", "exp", |mut caller: Caller<'_, Data>, x: f64| {
+                    let y = x.exp();
+                    caller.data_mut().tape.push(y);
+                    y
+                })
+                .unwrap();
+            linker
+                .func_wrap("f64", "exp_bwd", |mut caller: Caller<'_, Data>, dy: f64| {
+                    let y = caller.data_mut().tape.pop().unwrap();
+                    dy * y
+                })
+                .unwrap();
+            ad.import(("f64", "exp"), ("f64", "exp_bwd"));
+        });
+    {
+        let output = function.call(&mut store, 0.).unwrap();
+        assert_eq!(output, 0.5);
+        let gradient = backprop.call(&mut store, 1.).unwrap();
+        assert_eq!(gradient, 0.25);
+    }
+}
+
+#[test]
+fn test_reexport_func() {
+    let wat = include_str!("../wat/reexport_func.wat");
+    let (mut store, function, backprop) =
+        compile_with_imports::<f64, f64, f64, f64>(wat, "id", |linker, ad| {
+            linker.func_wrap("f64", "id", |x: f64| x).unwrap();
+            ad.import(("f64", "id"), ("f64", "id"));
+        });
+    {
+        let output = function.call(&mut store, 2.).unwrap();
+        assert_eq!(output, 2.);
+        let gradient = backprop.call(&mut store, 1.).unwrap();
+        assert_eq!(gradient, 1.);
+    }
 }
 
 #[test]

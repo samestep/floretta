@@ -34,9 +34,13 @@ struct Cli {
     #[clap(long)]
     no_names: bool,
 
+    /// In reverse mode, import the backward pass of a function that is already imported.
+    #[clap(short, long, value_names=["MODULE", "NAME", "MODULE", "NAME"])]
+    import: Vec<String>,
+
     /// In reverse mode, export the backward pass of a function that is already exported.
-    #[clap(short = 'e', long = "export", num_args = 2)]
-    name: Vec<String>,
+    #[clap(short, long, value_names=["NAME", "NAME"])]
+    export: Vec<String>,
 
     /// Output file path; if not provided, will write to stdout.
     #[clap(short, long)]
@@ -71,7 +75,11 @@ fn main() -> anyhow::Result<()> {
     if !args.no_names {
         ad.names();
     }
-    for pair in args.name.into_iter().chunks(2).into_iter() {
+    for quadruple in args.import.into_iter().chunks(4).into_iter() {
+        let (fwd_module, fwd_name, bwd_module, bwd_name) = quadruple.collect_tuple().unwrap();
+        ad.import((fwd_module, fwd_name), (bwd_module, bwd_name));
+    }
+    for pair in args.export.into_iter().chunks(2).into_iter() {
         let (forward, backward) = pair.collect_tuple().unwrap();
         ad.export(forward, backward);
     }

@@ -12,6 +12,8 @@
   (type $f64_bin_bwd (;10;) (func (param f64) (result f64 f64)))
   (type $my_type (;11;) (func (param i32 f64) (result f64 i32)))
   (type $my_type_bwd (;12;) (func (param f64) (result f64)))
+  (import "foo" "bar" (func $my_imported_func (;0;) (type $my_type)))
+  (import "baz" "qux" (func $my_imported_func_bwd (;1;) (type $my_type_bwd)))
   (memory $tape_align_1 (;0;) 0)
   (memory $tape_align_4 (;1;) 0)
   (memory $tape_align_8 (;2;) 0)
@@ -22,7 +24,7 @@
   (global $tape_align_8 (;2;) (mut i32) i32.const 0)
   (global $my_global (;3;) f64 f64.const 0x0p+0 (;=0;))
   (export "my_export" (func $my_func))
-  (func $tape_i32 (;0;) (type $tape_i32) (param i32)
+  (func $tape_i32 (;2;) (type $tape_i32) (param i32)
     (local i32 i32)
     global.get $tape_align_4
     local.tee 1
@@ -46,7 +48,7 @@
     local.get 0
     i32.store $tape_align_4
   )
-  (func $tape_i32_bwd (;1;) (type $tape_i32_bwd) (result i32)
+  (func $tape_i32_bwd (;3;) (type $tape_i32_bwd) (result i32)
     (local i32)
     global.get $tape_align_4
     i32.const 4
@@ -56,7 +58,7 @@
     local.get 0
     i32.load $tape_align_4
   )
-  (func $f32_sqrt (;2;) (type $f32_unary) (param f32) (result f32)
+  (func $f32_sqrt (;4;) (type $f32_unary) (param f32) (result f32)
     (local f32 i32 i32)
     global.get $tape_align_4
     local.tee 2
@@ -83,7 +85,7 @@
     f32.store $tape_align_4
     local.get 1
   )
-  (func $f32_sqrt_bwd (;3;) (type $f32_unary) (param f32) (result f32)
+  (func $f32_sqrt_bwd (;5;) (type $f32_unary) (param f32) (result f32)
     (local f32 i32)
     global.get $tape_align_4
     i32.const 4
@@ -98,7 +100,7 @@
     f32.add
     f32.div
   )
-  (func $f32_mul (;4;) (type $f32_bin) (param f32 f32) (result f32)
+  (func $f32_mul (;6;) (type $f32_bin) (param f32 f32) (result f32)
     (local i32 i32)
     global.get $tape_align_4
     local.tee 2
@@ -128,7 +130,7 @@
     local.get 1
     f32.mul
   )
-  (func $f32_mul_bwd (;5;) (type $f32_bin_bwd) (param f32) (result f32 f32)
+  (func $f32_mul_bwd (;7;) (type $f32_bin_bwd) (param f32) (result f32 f32)
     (local i32)
     global.get $tape_align_4
     i32.const 8
@@ -144,7 +146,7 @@
     f32.load $tape_align_4
     f32.mul
   )
-  (func $f32_div (;6;) (type $f32_bin) (param f32 f32) (result f32)
+  (func $f32_div (;8;) (type $f32_bin) (param f32 f32) (result f32)
     (local f32 i32 i32)
     global.get $tape_align_4
     local.tee 3
@@ -175,7 +177,7 @@
     f32.store $tape_align_4 offset=4
     local.get 2
   )
-  (func $f32_div_bwd (;7;) (type $f32_bin_bwd) (param f32) (result f32 f32)
+  (func $f32_div_bwd (;9;) (type $f32_bin_bwd) (param f32) (result f32 f32)
     (local f32 i32)
     global.get $tape_align_4
     i32.const 8
@@ -193,7 +195,7 @@
     f32.neg
     f32.mul
   )
-  (func $f32_min (;8;) (type $f32_bin) (param f32 f32) (result f32)
+  (func $f32_min (;10;) (type $f32_bin) (param f32 f32) (result f32)
     (local i32 i32)
     global.get $tape_align_1
     local.tee 2
@@ -222,7 +224,7 @@
     local.get 1
     f32.min
   )
-  (func $f32_min_bwd (;9;) (type $f32_bin_bwd) (param f32) (result f32 f32)
+  (func $f32_min_bwd (;11;) (type $f32_bin_bwd) (param f32) (result f32 f32)
     (local i32)
     global.get $tape_align_1
     i32.const 1
@@ -239,7 +241,7 @@
       f32.const 0x0p+0 (;=0;)
     end
   )
-  (func $f32_max (;10;) (type $f32_bin) (param f32 f32) (result f32)
+  (func $f32_max (;12;) (type $f32_bin) (param f32 f32) (result f32)
     (local i32 i32)
     global.get $tape_align_1
     local.tee 2
@@ -268,7 +270,7 @@
     local.get 1
     f32.max
   )
-  (func $f32_max_bwd (;11;) (type $f32_bin_bwd) (param f32) (result f32 f32)
+  (func $f32_max_bwd (;13;) (type $f32_bin_bwd) (param f32) (result f32 f32)
     (local i32)
     global.get $tape_align_1
     i32.const 1
@@ -285,7 +287,7 @@
       f32.const 0x0p+0 (;=0;)
     end
   )
-  (func $f64_sqrt (;12;) (type $f64_unary) (param f64) (result f64)
+  (func $f64_sqrt (;14;) (type $f64_unary) (param f64) (result f64)
     (local f64 i32 i32)
     global.get $tape_align_8
     local.tee 2
@@ -312,7 +314,7 @@
     f64.store $tape_align_8
     local.get 1
   )
-  (func $f64_sqrt_bwd (;13;) (type $f64_unary) (param f64) (result f64)
+  (func $f64_sqrt_bwd (;15;) (type $f64_unary) (param f64) (result f64)
     (local f64 i32)
     global.get $tape_align_8
     i32.const 8
@@ -327,7 +329,7 @@
     f64.add
     f64.div
   )
-  (func $f64_mul (;14;) (type $f64_bin) (param f64 f64) (result f64)
+  (func $f64_mul (;16;) (type $f64_bin) (param f64 f64) (result f64)
     (local i32 i32)
     global.get $tape_align_8
     local.tee 2
@@ -357,7 +359,7 @@
     local.get 1
     f64.mul
   )
-  (func $f64_mul_bwd (;15;) (type $f64_bin_bwd) (param f64) (result f64 f64)
+  (func $f64_mul_bwd (;17;) (type $f64_bin_bwd) (param f64) (result f64 f64)
     (local i32)
     global.get $tape_align_8
     i32.const 16
@@ -373,7 +375,7 @@
     f64.load $tape_align_8
     f64.mul
   )
-  (func $f64_div (;16;) (type $f64_bin) (param f64 f64) (result f64)
+  (func $f64_div (;18;) (type $f64_bin) (param f64 f64) (result f64)
     (local f64 i32 i32)
     global.get $tape_align_8
     local.tee 3
@@ -404,7 +406,7 @@
     f64.store $tape_align_8 offset=8
     local.get 2
   )
-  (func $f64_div_bwd (;17;) (type $f64_bin_bwd) (param f64) (result f64 f64)
+  (func $f64_div_bwd (;19;) (type $f64_bin_bwd) (param f64) (result f64 f64)
     (local f64 i32)
     global.get $tape_align_8
     i32.const 16
@@ -422,7 +424,7 @@
     f64.neg
     f64.mul
   )
-  (func $f64_min (;18;) (type $f64_bin) (param f64 f64) (result f64)
+  (func $f64_min (;20;) (type $f64_bin) (param f64 f64) (result f64)
     (local i32 i32)
     global.get $tape_align_1
     local.tee 2
@@ -451,7 +453,7 @@
     local.get 1
     f64.min
   )
-  (func $f64_min_bwd (;19;) (type $f64_bin_bwd) (param f64) (result f64 f64)
+  (func $f64_min_bwd (;21;) (type $f64_bin_bwd) (param f64) (result f64 f64)
     (local i32)
     global.get $tape_align_1
     i32.const 1
@@ -468,7 +470,7 @@
       f64.const 0x0p+0 (;=0;)
     end
   )
-  (func $f64_max (;20;) (type $f64_bin) (param f64 f64) (result f64)
+  (func $f64_max (;22;) (type $f64_bin) (param f64 f64) (result f64)
     (local i32 i32)
     global.get $tape_align_1
     local.tee 2
@@ -497,7 +499,7 @@
     local.get 1
     f64.max
   )
-  (func $f64_max_bwd (;21;) (type $f64_bin_bwd) (param f64) (result f64 f64)
+  (func $f64_max_bwd (;23;) (type $f64_bin_bwd) (param f64) (result f64 f64)
     (local i32)
     global.get $tape_align_1
     i32.const 1
@@ -514,14 +516,14 @@
       f64.const 0x0p+0 (;=0;)
     end
   )
-  (func $my_func (;22;) (type $my_type) (param $my_int_param i32) (param $my_float_param f64) (result f64 i32)
+  (func $my_func (;24;) (type $my_type) (param $my_int_param i32) (param $my_float_param f64) (result f64 i32)
     (local f32 f64 i32)
     local.get $my_float_param
     local.get $my_int_param
     i32.const 0
     call $tape_i32
   )
-  (func $my_func_bwd (;23;) (type $my_type_bwd) (param $result_0 f64) (result f64)
+  (func $my_func_bwd (;25;) (type $my_type_bwd) (param $result_0 f64) (result f64)
     (local $my_float_param f64) (local f32 f64) (local $tmp_i32 i32) (local $branch_f64_0 f64)
     local.get $result_0
     local.set $branch_f64_0
