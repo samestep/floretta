@@ -6,7 +6,7 @@ Floretta is an [automatic differentiation][] tool for [WebAssembly][].
 
 The easiest way to use Floretta is via the command line; take a look at the instructions in the [`floretta-cli`][] crate.
 
-Alternatively, if you'd prefer to use Floretta as a Rust library, you can do that via the [`floretta`][] crate.
+Alternatively, if you'd prefer to use Floretta as a Rust library, you can do so via the [`floretta`][] crate.
 
 ## Contributing
 
