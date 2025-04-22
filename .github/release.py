@@ -27,9 +27,10 @@ def main() -> None:
     parser.add_argument("version")
     args = parser.parse_args()
     version = args.version.removeprefix("v")
-    path = Path("Cargo.toml")
-    update_version(path, version)
-    run(["git", "add", path])
+    cargo_toml = "Cargo.toml"
+    update_version(Path(cargo_toml), version)
+    run(["cargo", "check"])
+    run(["git", "add", cargo_toml, "Cargo.lock"])
     run(["git", "commit", "-m", f"Release v{version}"])
     run(["git", "push"])
     run(["gh", "release", "create", f"v{version}", "--title", f"v{version}"])
