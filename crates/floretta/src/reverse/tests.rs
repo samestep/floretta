@@ -224,10 +224,10 @@ fn test_call() {
     Backprop {
         wat: include_str!("../wat/call.wat"),
         name: "tuple",
-        input: (2.0f64, 3i64, 4.0f32, 1i32),
-        output: (4.0f32, 1i32, 2.0f64, 3i64),
-        cotangent: (5.0f32, 6.0f64),
-        gradient: (6.0f64, 5.0f32),
+        input: (2f64, 3i64, 4f32, 1i32),
+        output: (4f32, 1i32, 2f64, 3i64),
+        cotangent: (5f32, 6f64),
+        gradient: (6f64, 5f32),
     }
     .test()
 }
@@ -263,10 +263,10 @@ fn test_drop_f32() {
     Backprop {
         wat: include_str!("../wat/drop_f32.wat"),
         name: "drop",
-        input: 42.0f32,
+        input: 42f32,
         output: (),
         cotangent: (),
-        gradient: 0.0f32,
+        gradient: 0f32,
     }
     .test()
 }
@@ -289,10 +289,10 @@ fn test_local_set_f32() {
     Backprop {
         wat: include_str!("../wat/local_set_f32.wat"),
         name: "clobber",
-        input: (1.0f32, 2.0f32),
-        output: (2.0f32, 2.0f32),
-        cotangent: (3.0f32, 4.0f32),
-        gradient: (0.0f32, 7.0f32),
+        input: (1f32, 2f32),
+        output: (2f32, 2f32),
+        cotangent: (3f32, 4f32),
+        gradient: (0f32, 7f32),
     }
     .test()
 }
@@ -315,10 +315,10 @@ fn test_tuple() {
     Backprop {
         wat: include_str!("../wat/tuple.wat"),
         name: "tuple",
-        input: (1i32, 2.0f64, 3i64, 4.0f32),
-        output: (4.0f32, 1i32, 2.0f64, 3i64),
-        cotangent: (5.0f32, 6.0f64),
-        gradient: (6.0f64, 5.0f32),
+        input: (1i32, 2f64, 3i64, 4f32),
+        output: (4f32, 1i32, 2f64, 3i64),
+        cotangent: (5f32, 6f64),
+        gradient: (6f64, 5f32),
     }
     .test()
 }
@@ -341,10 +341,10 @@ fn test_f32_store_load() {
     Backprop {
         wat: include_str!("../wat/f32_store_load.wat"),
         name: "roundtrip",
-        input: 42.0f32,
-        output: 42.0f32,
-        cotangent: 1.0f32,
-        gradient: 1.0f32,
+        input: 42f32,
+        output: 42f32,
+        cotangent: 1f32,
+        gradient: 1f32,
     }
     .test()
 }
@@ -394,8 +394,8 @@ fn test_f32_const() {
         wat: include_str!("../wat/f32_const.wat"),
         name: "const",
         input: (),
-        output: 42.0f32,
-        cotangent: 1.0f32,
+        output: 42f32,
+        cotangent: 1f32,
         gradient: (),
     }
     .test()
@@ -1009,10 +1009,10 @@ fn test_f32_neg() {
     Backprop {
         wat: include_str!("../wat/f32_neg.wat"),
         name: "neg",
-        input: 3.0f32,
-        output: -3.0f32,
-        cotangent: 1.0f32,
-        gradient: -1.0f32,
+        input: 3f32,
+        output: -3f32,
+        cotangent: 1f32,
+        gradient: -1f32,
     }
     .test()
 }
@@ -1022,9 +1022,9 @@ fn test_f32_sqrt() {
     Backprop {
         wat: include_str!("../wat/f32_sqrt.wat"),
         name: "sqrt",
-        input: 16.0f32,
-        output: 4.0f32,
-        cotangent: 1.0f32,
+        input: 16f32,
+        output: 4f32,
+        cotangent: 1f32,
         gradient: 0.125f32,
     }
     .test()
@@ -1035,10 +1035,10 @@ fn test_f32_add() {
     Backprop {
         wat: include_str!("../wat/f32_add.wat"),
         name: "add",
-        input: (3.0f32, 2.0f32),
-        output: 5.0f32,
-        cotangent: 1.0f32,
-        gradient: (1.0f32, 1.0f32),
+        input: (3f32, 2f32),
+        output: 5f32,
+        cotangent: 1f32,
+        gradient: (1f32, 1f32),
     }
     .test()
 }
@@ -1048,10 +1048,10 @@ fn test_f32_sub() {
     Backprop {
         wat: include_str!("../wat/f32_sub.wat"),
         name: "sub",
-        input: (3.0f32, 2.0f32),
-        output: 1.0f32,
-        cotangent: 1.0f32,
-        gradient: (1.0f32, -1.0f32),
+        input: (3f32, 2f32),
+        output: 1f32,
+        cotangent: 1f32,
+        gradient: (1f32, -1f32),
     }
     .test()
 }
@@ -1061,10 +1061,10 @@ fn test_f32_mul() {
     Backprop {
         wat: include_str!("../wat/f32_mul.wat"),
         name: "mul",
-        input: (3.0f32, 2.0f32),
-        output: 6.0f32,
-        cotangent: 1.0f32,
-        gradient: (2.0f32, 3.0f32),
+        input: (3f32, 2f32),
+        output: 6f32,
+        cotangent: 1f32,
+        gradient: (2f32, 3f32),
     }
     .test()
 }
@@ -1074,9 +1074,9 @@ fn test_f32_div() {
     Backprop {
         wat: include_str!("../wat/f32_div.wat"),
         name: "div",
-        input: (3.0f32, 2.0f32),
+        input: (3f32, 2f32),
         output: 1.5f32,
-        cotangent: 1.0f32,
+        cotangent: 1f32,
         gradient: (0.5f32, -0.75f32),
     }
     .test()
@@ -1087,10 +1087,10 @@ fn test_f32_min() {
     Backprop {
         wat: include_str!("../wat/f32_min.wat"),
         name: "min",
-        input: (2.0f32, 3.0f32),
-        output: 2.0f32,
-        cotangent: 1.0f32,
-        gradient: (1.0f32, 0.0f32),
+        input: (2f32, 3f32),
+        output: 2f32,
+        cotangent: 1f32,
+        gradient: (1f32, 0f32),
     }
     .test()
 }
@@ -1100,10 +1100,10 @@ fn test_f32_max() {
     Backprop {
         wat: include_str!("../wat/f32_max.wat"),
         name: "max",
-        input: (2.0f32, 3.0f32),
-        output: 3.0f32,
-        cotangent: 1.0f32,
-        gradient: (0.0f32, 1.0f32),
+        input: (2f32, 3f32),
+        output: 3f32,
+        cotangent: 1f32,
+        gradient: (0f32, 1f32),
     }
     .test()
 }
