@@ -1211,3 +1211,107 @@ fn test_f64_max() {
     }
     .test()
 }
+
+#[test]
+fn test_f32_convert_i32_s() {
+    Backprop {
+        wat: include_str!("../wat/f32_convert_i32_s.wat"),
+        name: "convert",
+        input: -1i32,
+        output: -1f32,
+        cotangent: 1f32,
+        gradient: (),
+    }
+    .test()
+}
+
+#[test]
+fn test_f32_convert_i32_u() {
+    Backprop {
+        wat: include_str!("../wat/f32_convert_i32_u.wat"),
+        name: "convert",
+        input: u32::MAX,
+        output: 4294967295f32,
+        cotangent: 1f32,
+        gradient: (),
+    }
+    .test()
+}
+
+#[test]
+fn test_f32_convert_i64_s() {
+    Backprop {
+        wat: include_str!("../wat/f32_convert_i64_s.wat"),
+        name: "convert",
+        input: -1i64,
+        output: -1f32,
+        cotangent: 1f32,
+        gradient: (),
+    }
+    .test()
+}
+
+#[test]
+fn test_f32_convert_i64_u() {
+    Backprop {
+        wat: include_str!("../wat/f32_convert_i64_u.wat"),
+        name: "convert",
+        input: u64::MAX,
+        output: 18446744073709551615f32,
+        cotangent: 1f32,
+        gradient: (),
+    }
+    .test()
+}
+
+#[test]
+fn test_f64_convert_i32_s() {
+    Backprop {
+        wat: include_str!("../wat/f64_convert_i32_s.wat"),
+        name: "convert",
+        input: -1i32,
+        output: -1.,
+        cotangent: 1.,
+        gradient: (),
+    }
+    .test()
+}
+
+#[test]
+fn test_f64_convert_i32_u() {
+    Backprop {
+        wat: include_str!("../wat/f64_convert_i32_u.wat"),
+        name: "convert",
+        input: u32::MAX,
+        output: 4294967295.,
+        cotangent: 1.,
+        gradient: (),
+    }
+    .test()
+}
+
+#[test]
+fn test_f64_convert_i64_s() {
+    Backprop {
+        wat: include_str!("../wat/f64_convert_i64_s.wat"),
+        name: "convert",
+        input: -1i64,
+        output: -1.,
+        cotangent: 1.,
+        gradient: (),
+    }
+    .test()
+}
+
+#[test]
+fn test_f64_convert_i64_u() {
+    Backprop {
+        wat: include_str!("../wat/f64_convert_i64_u.wat"),
+        name: "convert",
+        input: u64::MAX,
+        output: 18446744073709551615.,
+        cotangent: 1.,
+        gradient: (),
+    }
+    .test()
+}

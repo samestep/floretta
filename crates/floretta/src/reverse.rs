@@ -1207,6 +1207,54 @@ impl<'a> Func<'a> {
                 self.bwd
                     .instructions(|insn| insn.call(helper.f64_max_bwd()));
             }
+            Operator::F32ConvertI32S => {
+                self.pop();
+                self.push_f32();
+                self.fwd.instructions().f32_convert_i32_s();
+                self.bwd.instructions(|insn| insn.drop());
+            }
+            Operator::F32ConvertI32U => {
+                self.pop();
+                self.push_f32();
+                self.fwd.instructions().f32_convert_i32_u();
+                self.bwd.instructions(|insn| insn.drop());
+            }
+            Operator::F32ConvertI64S => {
+                self.pop();
+                self.push_f32();
+                self.fwd.instructions().f32_convert_i64_s();
+                self.bwd.instructions(|insn| insn.drop());
+            }
+            Operator::F32ConvertI64U => {
+                self.pop();
+                self.push_f32();
+                self.fwd.instructions().f32_convert_i64_u();
+                self.bwd.instructions(|insn| insn.drop());
+            }
+            Operator::F64ConvertI32S => {
+                self.pop();
+                self.push_f64();
+                self.fwd.instructions().f64_convert_i32_s();
+                self.bwd.instructions(|insn| insn.drop());
+            }
+            Operator::F64ConvertI32U => {
+                self.pop();
+                self.push_f64();
+                self.fwd.instructions().f64_convert_i32_u();
+                self.bwd.instructions(|insn| insn.drop());
+            }
+            Operator::F64ConvertI64S => {
+                self.pop();
+                self.push_f64();
+                self.fwd.instructions().f64_convert_i64_s();
+                self.bwd.instructions(|insn| insn.drop());
+            }
+            Operator::F64ConvertI64U => {
+                self.pop();
+                self.push_f64();
+                self.fwd.instructions().f64_convert_i64_u();
+                self.bwd.instructions(|insn| insn.drop());
+            }
             _ => unimplemented!("{op:?}"),
         }
         Ok(())
