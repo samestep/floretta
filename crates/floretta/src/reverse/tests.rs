@@ -1108,6 +1108,23 @@ fn test_f32_max() {
     .test()
 }
 
+#[rstest]
+#[case(2., 3., 2., 1.)]
+#[case(-2., 3., 2., -1.)]
+#[case(2., -3., -2., -1.)]
+#[case(-2., -3., -2., 1.)]
+fn test_f32_copysign(#[case] to: f32, #[case] from: f32, #[case] out: f32, #[case] grad: f32) {
+    Backprop {
+        wat: include_str!("../wat/f32_copysign.wat"),
+        name: "copysign",
+        input: (to, from),
+        output: out,
+        cotangent: 1f32,
+        gradient: (grad, 0f32),
+    }
+    .test()
+}
+
 #[test]
 fn test_f64_neg() {
     Backprop {
@@ -1208,6 +1225,23 @@ fn test_f64_max() {
         output: 3.,
         cotangent: 1.,
         gradient: (0., 1.),
+    }
+    .test()
+}
+
+#[rstest]
+#[case(2., 3., 2., 1.)]
+#[case(-2., 3., 2., -1.)]
+#[case(2., -3., -2., -1.)]
+#[case(-2., -3., -2., 1.)]
+fn test_f64_copysign(#[case] to: f64, #[case] from: f64, #[case] out: f64, #[case] grad: f64) {
+    Backprop {
+        wat: include_str!("../wat/f64_copysign.wat"),
+        name: "copysign",
+        input: (to, from),
+        output: out,
+        cotangent: 1.,
+        gradient: (grad, 0.),
     }
     .test()
 }

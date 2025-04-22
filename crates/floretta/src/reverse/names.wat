@@ -290,7 +290,54 @@
       f32.const 0x0p+0 (;=0;)
     end
   )
-  (func $f64_sqrt (;14;) (type $f64_unary) (param f64) (result f64)
+  (func $f32_copysign (;14;) (type $f32_bin) (param f32 f32) (result f32)
+    (local i32 i32)
+    global.get $tape_align_1
+    local.tee 2
+    i32.const 65536
+    i32.add
+    i32.const 16
+    i32.shr_u
+    memory.size
+    i32.sub
+    local.tee 3
+    if ;; label = @1
+      local.get 3
+      memory.grow
+      drop
+    end
+    local.get 2
+    i32.const 1
+    i32.add
+    global.set $tape_align_1
+    local.get 2
+    local.get 0
+    local.get 1
+    f32.copysign
+    local.get 0
+    f32.eq
+    i32.store8
+    local.get 0
+    local.get 1
+    f32.copysign
+  )
+  (func $f32_copysign_bwd (;15;) (type $f32_bin_bwd) (param f32) (result f32 f32)
+    (local i32)
+    global.get $tape_align_1
+    i32.const 1
+    i32.sub
+    local.tee 1
+    global.set $tape_align_1
+    local.get 0
+    local.get 0
+    f32.const -0x0p+0 (;=-0;)
+    f32.copysign
+    local.get 1
+    i32.load8_u
+    select
+    f32.const 0x0p+0 (;=0;)
+  )
+  (func $f64_sqrt (;16;) (type $f64_unary) (param f64) (result f64)
     (local f64 i32 i32)
     global.get $tape_align_8
     local.tee 2
@@ -317,7 +364,7 @@
     f64.store $tape_align_8
     local.get 1
   )
-  (func $f64_sqrt_bwd (;15;) (type $f64_unary) (param f64) (result f64)
+  (func $f64_sqrt_bwd (;17;) (type $f64_unary) (param f64) (result f64)
     (local f64 i32)
     global.get $tape_align_8
     i32.const 8
@@ -332,7 +379,7 @@
     f64.add
     f64.div
   )
-  (func $f64_mul (;16;) (type $f64_bin) (param f64 f64) (result f64)
+  (func $f64_mul (;18;) (type $f64_bin) (param f64 f64) (result f64)
     (local i32 i32)
     global.get $tape_align_8
     local.tee 2
@@ -362,7 +409,7 @@
     local.get 1
     f64.mul
   )
-  (func $f64_mul_bwd (;17;) (type $f64_bin_bwd) (param f64) (result f64 f64)
+  (func $f64_mul_bwd (;19;) (type $f64_bin_bwd) (param f64) (result f64 f64)
     (local i32)
     global.get $tape_align_8
     i32.const 16
@@ -378,7 +425,7 @@
     f64.load $tape_align_8
     f64.mul
   )
-  (func $f64_div (;18;) (type $f64_bin) (param f64 f64) (result f64)
+  (func $f64_div (;20;) (type $f64_bin) (param f64 f64) (result f64)
     (local f64 i32 i32)
     global.get $tape_align_8
     local.tee 3
@@ -409,7 +456,7 @@
     f64.store $tape_align_8 offset=8
     local.get 2
   )
-  (func $f64_div_bwd (;19;) (type $f64_bin_bwd) (param f64) (result f64 f64)
+  (func $f64_div_bwd (;21;) (type $f64_bin_bwd) (param f64) (result f64 f64)
     (local f64 i32)
     global.get $tape_align_8
     i32.const 16
@@ -427,7 +474,7 @@
     f64.neg
     f64.mul
   )
-  (func $f64_min (;20;) (type $f64_bin) (param f64 f64) (result f64)
+  (func $f64_min (;22;) (type $f64_bin) (param f64 f64) (result f64)
     (local i32 i32)
     global.get $tape_align_1
     local.tee 2
@@ -456,7 +503,7 @@
     local.get 1
     f64.min
   )
-  (func $f64_min_bwd (;21;) (type $f64_bin_bwd) (param f64) (result f64 f64)
+  (func $f64_min_bwd (;23;) (type $f64_bin_bwd) (param f64) (result f64 f64)
     (local i32)
     global.get $tape_align_1
     i32.const 1
@@ -473,7 +520,7 @@
       f64.const 0x0p+0 (;=0;)
     end
   )
-  (func $f64_max (;22;) (type $f64_bin) (param f64 f64) (result f64)
+  (func $f64_max (;24;) (type $f64_bin) (param f64 f64) (result f64)
     (local i32 i32)
     global.get $tape_align_1
     local.tee 2
@@ -502,7 +549,7 @@
     local.get 1
     f64.max
   )
-  (func $f64_max_bwd (;23;) (type $f64_bin_bwd) (param f64) (result f64 f64)
+  (func $f64_max_bwd (;25;) (type $f64_bin_bwd) (param f64) (result f64 f64)
     (local i32)
     global.get $tape_align_1
     i32.const 1
@@ -519,14 +566,61 @@
       f64.const 0x0p+0 (;=0;)
     end
   )
-  (func $my_func (;24;) (type $my_type) (param $my_int_param i32) (param $my_float_param f64) (result f64 i32)
+  (func $f64_copysign (;26;) (type $f64_bin) (param f64 f64) (result f64)
+    (local i32 i32)
+    global.get $tape_align_1
+    local.tee 2
+    i32.const 65536
+    i32.add
+    i32.const 16
+    i32.shr_u
+    memory.size
+    i32.sub
+    local.tee 3
+    if ;; label = @1
+      local.get 3
+      memory.grow
+      drop
+    end
+    local.get 2
+    i32.const 1
+    i32.add
+    global.set $tape_align_1
+    local.get 2
+    local.get 0
+    local.get 1
+    f64.copysign
+    local.get 0
+    f64.eq
+    i32.store8
+    local.get 0
+    local.get 1
+    f64.copysign
+  )
+  (func $f64_copysign_bwd (;27;) (type $f64_bin_bwd) (param f64) (result f64 f64)
+    (local i32)
+    global.get $tape_align_1
+    i32.const 1
+    i32.sub
+    local.tee 1
+    global.set $tape_align_1
+    local.get 0
+    local.get 0
+    f64.const -0x0p+0 (;=-0;)
+    f64.copysign
+    local.get 1
+    i32.load8_u
+    select
+    f64.const 0x0p+0 (;=0;)
+  )
+  (func $my_func (;28;) (type $my_type) (param $my_int_param i32) (param $my_float_param f64) (result f64 i32)
     (local f32 f64 i32)
     local.get $my_float_param
     local.get $my_int_param
     i32.const 0
     call $tape_i32
   )
-  (func $my_func_bwd (;25;) (type $my_type_bwd) (param $result_0 f64) (result f64)
+  (func $my_func_bwd (;29;) (type $my_type_bwd) (param $result_0 f64) (result f64)
     (local $my_float_param f64) (local f32 f64) (local $tmp_i32 i32) (local $branch_f64_0 f64)
     local.get $result_0
     local.set $branch_f64_0

@@ -1148,6 +1148,13 @@ impl<'a> Func<'a> {
                 self.bwd
                     .instructions(|insn| insn.call(helper.f32_max_bwd()));
             }
+            Operator::F32Copysign => {
+                self.pop2();
+                self.push_f32();
+                self.fwd.instructions().call(helper.f32_copysign_fwd());
+                self.bwd
+                    .instructions(|insn| insn.call(helper.f32_copysign_bwd()));
+            }
             Operator::F64Neg => {
                 self.pop();
                 self.push_f64();
@@ -1206,6 +1213,13 @@ impl<'a> Func<'a> {
                 self.fwd.instructions().call(helper.f64_max_fwd());
                 self.bwd
                     .instructions(|insn| insn.call(helper.f64_max_bwd()));
+            }
+            Operator::F64Copysign => {
+                self.pop2();
+                self.push_f64();
+                self.fwd.instructions().call(helper.f64_copysign_fwd());
+                self.bwd
+                    .instructions(|insn| insn.call(helper.f64_copysign_bwd()));
             }
             Operator::F32ConvertI32S => {
                 self.pop();

@@ -27,7 +27,7 @@ const GLOBAL_TAPE_ALIGN_1: u32 = 0;
 const GLOBAL_TAPE_ALIGN_4: u32 = 1;
 const GLOBAL_TAPE_ALIGN_8: u32 = 2;
 
-pub const OFFSET_FUNCTIONS: u32 = 22;
+pub const OFFSET_FUNCTIONS: u32 = 26;
 
 pub struct FuncOffsets {
     num_imports: NumImports,
@@ -90,44 +90,60 @@ impl FuncOffsets {
         self.offset() + 11
     }
 
-    pub fn f64_sqrt_fwd(&self) -> u32 {
+    pub fn f32_copysign_fwd(&self) -> u32 {
         self.offset() + 12
     }
 
-    pub fn f64_sqrt_bwd(&self) -> u32 {
+    pub fn f32_copysign_bwd(&self) -> u32 {
         self.offset() + 13
     }
 
-    pub fn f64_mul_fwd(&self) -> u32 {
+    pub fn f64_sqrt_fwd(&self) -> u32 {
         self.offset() + 14
     }
 
-    pub fn f64_mul_bwd(&self) -> u32 {
+    pub fn f64_sqrt_bwd(&self) -> u32 {
         self.offset() + 15
     }
 
-    pub fn f64_div_fwd(&self) -> u32 {
+    pub fn f64_mul_fwd(&self) -> u32 {
         self.offset() + 16
     }
 
-    pub fn f64_div_bwd(&self) -> u32 {
+    pub fn f64_mul_bwd(&self) -> u32 {
         self.offset() + 17
     }
 
-    pub fn f64_min_fwd(&self) -> u32 {
+    pub fn f64_div_fwd(&self) -> u32 {
         self.offset() + 18
     }
 
-    pub fn f64_min_bwd(&self) -> u32 {
+    pub fn f64_div_bwd(&self) -> u32 {
         self.offset() + 19
     }
 
-    pub fn f64_max_fwd(&self) -> u32 {
+    pub fn f64_min_fwd(&self) -> u32 {
         self.offset() + 20
     }
 
-    pub fn f64_max_bwd(&self) -> u32 {
+    pub fn f64_min_bwd(&self) -> u32 {
         self.offset() + 21
+    }
+
+    pub fn f64_max_fwd(&self) -> u32 {
+        self.offset() + 22
+    }
+
+    pub fn f64_max_bwd(&self) -> u32 {
+        self.offset() + 23
+    }
+
+    pub fn f64_copysign_fwd(&self) -> u32 {
+        self.offset() + 24
+    }
+
+    pub fn f64_copysign_bwd(&self) -> u32 {
+        self.offset() + 25
     }
 }
 
@@ -305,6 +321,18 @@ pub fn helper_functions() -> impl Iterator<Item = (&'static str, u32, Function)>
             func_f32_max_bwd(),
         ),
         (
+            offsets.f32_copysign_fwd(),
+            "f32_copysign",
+            TYPE_F32_BIN_FWD,
+            func_f32_copysign_fwd(),
+        ),
+        (
+            offsets.f32_copysign_bwd(),
+            "f32_copysign_bwd",
+            TYPE_F32_BIN_BWD,
+            func_f32_copysign_bwd(),
+        ),
+        (
             offsets.f64_sqrt_fwd(),
             "f64_sqrt",
             TYPE_F64_UNARY,
@@ -363,6 +391,18 @@ pub fn helper_functions() -> impl Iterator<Item = (&'static str, u32, Function)>
             "f64_max_bwd",
             TYPE_F64_BIN_BWD,
             func_f64_max_bwd(),
+        ),
+        (
+            offsets.f64_copysign_fwd(),
+            "f64_copysign",
+            TYPE_F64_BIN_FWD,
+            func_f64_copysign_fwd(),
+        ),
+        (
+            offsets.f64_copysign_bwd(),
+            "f64_copysign_bwd",
+            TYPE_F64_BIN_BWD,
+            func_f64_copysign_bwd(),
         ),
     ]
     .into_iter()
@@ -733,6 +773,60 @@ fn func_f32_max_bwd() -> Function {
     f
 }
 
+fn func_f32_copysign_fwd() -> Function {
+    let [to, from, i, n] = [0, 1, 2, 3];
+    let mut f = Function::new([(2, ValType::I32)]);
+    Tape {
+        memory: MEM_TAPE_ALIGN_1,
+        global: GLOBAL_TAPE_ALIGN_1,
+        local: i,
+    }
+    .grow(&mut f, n, 1);
+    f.instructions()
+        .local_get(i)
+        .local_get(to)
+        .local_get(from)
+        .f32_copysign()
+        .local_get(to)
+        .f32_eq()
+        .i32_store8(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: MEM_TAPE_ALIGN_1,
+        })
+        .local_get(to)
+        .local_get(from)
+        .f32_copysign()
+        .end();
+    f
+}
+
+fn func_f32_copysign_bwd() -> Function {
+    let [grad, i] = [0, 1];
+    let mut f = Function::new([(1, ValType::I32)]);
+    Tape {
+        memory: MEM_TAPE_ALIGN_1,
+        global: GLOBAL_TAPE_ALIGN_1,
+        local: i,
+    }
+    .shrink(&mut f, 1);
+    f.instructions()
+        .local_get(grad)
+        .local_get(grad)
+        .f32_const(-0.)
+        .f32_copysign()
+        .local_get(i)
+        .i32_load8_u(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: MEM_TAPE_ALIGN_1,
+        })
+        .select()
+        .f32_const(0.)
+        .end();
+    f
+}
+
 fn func_f64_sqrt_fwd() -> Function {
     let [x, y, i, n] = [0, 1, 2, 3];
     let mut f = Function::new([(1, ValType::F64), (2, ValType::I32)]);
@@ -1009,6 +1103,60 @@ fn func_f64_max_bwd() -> Function {
         .local_get(dz)
         .f64_const(0.)
         .end()
+        .end();
+    f
+}
+
+fn func_f64_copysign_fwd() -> Function {
+    let [to, from, i, n] = [0, 1, 2, 3];
+    let mut f = Function::new([(2, ValType::I32)]);
+    Tape {
+        memory: MEM_TAPE_ALIGN_1,
+        global: GLOBAL_TAPE_ALIGN_1,
+        local: i,
+    }
+    .grow(&mut f, n, 1);
+    f.instructions()
+        .local_get(i)
+        .local_get(to)
+        .local_get(from)
+        .f64_copysign()
+        .local_get(to)
+        .f64_eq()
+        .i32_store8(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: MEM_TAPE_ALIGN_1,
+        })
+        .local_get(to)
+        .local_get(from)
+        .f64_copysign()
+        .end();
+    f
+}
+
+fn func_f64_copysign_bwd() -> Function {
+    let [grad, i] = [0, 1];
+    let mut f = Function::new([(1, ValType::I32)]);
+    Tape {
+        memory: MEM_TAPE_ALIGN_1,
+        global: GLOBAL_TAPE_ALIGN_1,
+        local: i,
+    }
+    .shrink(&mut f, 1);
+    f.instructions()
+        .local_get(grad)
+        .local_get(grad)
+        .f64_const(-0.)
+        .f64_copysign()
+        .local_get(i)
+        .i32_load8_u(MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: MEM_TAPE_ALIGN_1,
+        })
+        .select()
+        .f64_const(0.)
         .end();
     f
 }
