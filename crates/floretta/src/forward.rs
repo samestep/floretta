@@ -170,7 +170,7 @@ impl Func {
         self.local_indices[u32_to_usize(index)]
     }
 
-    fn instructions(&mut self) -> InstructionSink {
+    fn instructions(&mut self) -> InstructionSink<'_> {
         self.body.instructions()
     }
 }
