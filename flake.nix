@@ -2,8 +2,8 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    fenix = {
-      url = "github:nix-community/fenix";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -12,27 +12,29 @@
       self,
       nixpkgs,
       flake-utils,
-      fenix,
+      rust-overlay,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = import nixpkgs { inherit system; };
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ (import rust-overlay) ];
+        };
       in
       {
-        devShell =
-          with pkgs;
-          mkShell {
-            buildInputs = [
-              gh
-              nixfmt-rfc-style
-              nodejs
-              uv
-              wasm-tools
-
-              (fenix.packages.${system}.latest.toolchain)
-            ];
-          };
+        devShell = pkgs.mkShell {
+          buildInputs = [
+            pkgs.gh
+            pkgs.nixfmt-rfc-style
+            pkgs.nodejs
+            pkgs.uv
+            pkgs.wasm-tools
+            (pkgs.rust-bin.selectLatestNightlyWith (
+              toolchain: toolchain.default.override { extensions = [ "rust-src" ]; }
+            ))
+          ];
+        };
       }
     );
 }
