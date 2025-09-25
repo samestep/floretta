@@ -30,9 +30,7 @@
             pkgs.nodejs
             pkgs.uv
             pkgs.wasm-tools
-            (pkgs.rust-bin.selectLatestNightlyWith (
-              toolchain: toolchain.default.override { extensions = [ "rust-src" ]; }
-            ))
+            (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
           ];
         };
       }
