@@ -1805,7 +1805,7 @@ impl ReverseReverseFunction {
         self.body[n..].reverse();
     }
 
-    fn instructions(&mut self) -> InstructionSink {
+    fn instructions(&mut self) -> InstructionSink<'_> {
         InstructionSink::new(&mut self.body)
     }
 

@@ -5,7 +5,7 @@
 Be sure to have these tools installed:
 
 - [GitHub CLI][]
-- [Rust][] nightly with the [`rust-src` component][rust-src]
+- [Rust][]
 - [uv][]
 
 ## Setup
@@ -43,5 +43,4 @@ To make a new release:
 
 [github cli]: https://cli.github.com/
 [rust]: https://www.rust-lang.org/tools/install
-[rust-src]: https://rust-lang.github.io/rustup/concepts/components.html
 [uv]: https://docs.astral.sh/uv
