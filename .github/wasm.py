@@ -2,14 +2,15 @@
 
 import argparse
 import gzip
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 
-def run(cmd: list[str]) -> None:
-    subprocess.run(cmd, check=True)
+def run(cmd: list[str], **kwargs) -> None:
+    subprocess.run(cmd, check=True, **kwargs)
 
 
 def compile() -> str:
@@ -21,8 +22,9 @@ def compile() -> str:
             "--target=wasm32-unknown-unknown",
             "--profile=tiny",
             "-Zbuild-std=std,panic_abort",
-            "-Zbuild-std-features=optimize_for_size,panic_immediate_abort",
-        ]
+            "-Zbuild-std-features=optimize_for_size",
+        ],
+        env=os.environ | {"RUSTFLAGS": "-Zunstable-options -Cpanic=immediate-abort"},
     )
     return "target/wasm32-unknown-unknown/tiny/floretta_wasm.wasm"
 
